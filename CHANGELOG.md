@@ -1,6 +1,8 @@
 ### 0.2.0
 
-- Added support for airplay, picture-in-picture and chromecast.
+- [Cast] Added Cast support.
+- [Airplay] Added Airplay support.
+- [Picture In Picture] Added picture-in-picture support.
 
 ### 0.1.0
 
