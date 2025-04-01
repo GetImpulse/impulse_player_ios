@@ -23,7 +23,7 @@ Once you have your Swift package set up, adding Parley as a dependency is as eas
 
 ```
 dependencies: [
-    .package(url: "git@github.com:getimpulse/impulse_player_ios.git", .upToNextMajor(from: "0.1.x"))
+    .package(url: "git@github.com:getimpulse/impulse_player_ios.git", .upToNextMajor(from: "0.2.x"))
 ]
 ```
 
