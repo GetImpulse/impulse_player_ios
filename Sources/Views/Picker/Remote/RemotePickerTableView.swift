@@ -1,49 +1,35 @@
 import UIKit
+import GoogleCast
+import Combine
 
 @MainActor
-protocol PickerTableViewDelegate: AnyObject {
-    func selectedItemInPickerView<T>(_ pickerView: PickerTableView<T>, item: T)
+protocol RemotePickerTableViewDelegate: AnyObject {
+    func selectedItemInPickerView(_ pickerView: RemotePickerTableView, item: RemoteDevice)
 }
 
-class PickerTableView<T: Equatable & CustomStringConvertible>: UITableViewController {
+class RemotePickerTableView: UITableViewController {
     
+    // MARK: DI
     private let header: String
-    private let items: [T]
     
-    private var selectedIndexPath: IndexPath?
-    
-    weak var delegate: PickerTableViewDelegate?
-    
-    init(header: String, items: [T], selectedIndex: Int? = nil) {
+    init(header: String) {
         self.header = header
-        self.items = items
-        if let selectedIndex {
-            self.selectedIndexPath = IndexPath(item: selectedIndex, section: 0)
-        }
         super.init(nibName: nil, bundle: nil)
-    }
-    
-    convenience init(header: String, items: [T], currentlySelectedItem: T?) {
-        let selectedIndex: Int? = if let currentlySelectedItem {
-            items.firstIndex(where: { $0 == currentlySelectedItem })
-        } else {
-            nil
-        }
-        self.init(header: header, items: items, selectedIndex: selectedIndex)
     }
     
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
     
+    // MARK: Variables
+    weak var delegate: RemotePickerTableViewDelegate?
+    
+    // MARK: Private Variables
+    private var items: [RemoteDevice] = []
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         setup()
-    }
-    
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        tableView.selectRow(at: selectedIndexPath, animated: false, scrollPosition: .none)
     }
     
     // MARK: Tableview datasource
@@ -58,14 +44,14 @@ class PickerTableView<T: Equatable & CustomStringConvertible>: UITableViewContro
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "cell", for: indexPath)
         cell.selectionStyle = .none
-
-        guard let pickerCell = cell as? PickerTableViewCell else {
+        
+        guard let remotePickerTableViewCell = cell as? RemotePickerTableViewCell else {
             return cell
         }
+        
         let item = items[indexPath.row]
-        pickerCell.update(title: item.description)
-
-        return cell
+        remotePickerTableViewCell.update(with: .init(icon: .library(named: item.iconName), title: item.description))
+        return remotePickerTableViewCell
     }
     
     // MARK: TableView delegate
@@ -76,10 +62,15 @@ class PickerTableView<T: Equatable & CustomStringConvertible>: UITableViewContro
     }
 }
 
-private extension PickerTableView {
+private extension RemotePickerTableView {
     
-    func setup() {        
-        tableView.register(PickerTableViewCell.self, forCellReuseIdentifier: "cell")
+    func setup() {
+        setupLayout()
+        setupObservers()
+    }
+    
+    func setupLayout() {
+        tableView.register(RemotePickerTableViewCell.self, forCellReuseIdentifier: "cell")
         tableView.estimatedRowHeight = 48.0
         tableView.rowHeight = UITableView.automaticDimension
         tableView.separatorStyle = .none
@@ -106,5 +97,56 @@ private extension PickerTableView {
         headerContainer.frame.size = CGSize(width: tableView.bounds.width, height: size.height + 45.0 + 16.0)
         
         tableView.tableHeaderView = headerContainer
+    }
+    
+    func setupObservers() {
+        GCKCastContext.sharedInstance().discoveryManager.add(self)
+        GCKCastContext.sharedInstance().sessionManager.add(self)
+        
+        updateDeviceList()
+    }
+}
+
+private extension RemotePickerTableView {
+    
+    func updateDeviceList() {
+        var devices: [RemoteDevice] = []
+        let sessionManager = GCKCastContext.sharedInstance().sessionManager
+        if sessionManager.hasConnectedSession() {
+            devices.append(.thisDevice)
+        }
+        
+        devices.append(.airplay)
+        
+        let discoveryManager = GCKCastContext.sharedInstance().discoveryManager
+        discoveryManager.startDiscovery()
+        let deviceCount = discoveryManager.deviceCount
+        if deviceCount > 0 {
+            (0..<deviceCount).forEach { index in
+                let device = discoveryManager.device(at: index)
+                devices.append(.cast(device: device))
+            }
+        }
+        
+        items = devices
+        tableView.reloadData()
+    }
+}
+
+extension RemotePickerTableView: @preconcurrency GCKDiscoveryManagerListener {
+    
+    func didUpdateDeviceList() {
+        Task { @MainActor in
+            updateDeviceList()
+        }
+    }
+}
+
+extension RemotePickerTableView: @preconcurrency GCKSessionManagerListener {
+    
+    func sessionManager(_ sessionManager: GCKSessionManager, session: GCKSession, didUpdate device: GCKDevice) {
+        Task { @MainActor in
+            updateDeviceList()
+        }
     }
 }

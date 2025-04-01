@@ -3,7 +3,7 @@ import UIKit
 class PlayerTimeline: UISlider {
     
     // Customize the thumb size
-    var outsideThumbSize: CGSize = CGSize(width: 44.0, height: 44.0)
+    var outsideThumbSize: CGSize = CGSize(width: 20.0, height: 20.0) // NOTE: This increases the visual distance between the timeline and the controls because it increases the intrinsic size of the timeline
     var customThumbSize: CGSize = CGSize(width: 12.0, height: 12)
 
     // Customize the track height

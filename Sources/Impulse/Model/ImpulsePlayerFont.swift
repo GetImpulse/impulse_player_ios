@@ -42,7 +42,7 @@ extension UIFont {
 
 public extension ImpulsePlayerFont {
     
-    public enum FontType {
+    enum FontType {
         case customByName(fontName: String)
         case customByFamily(familyName: String, bold: Bool, italic: Bool)
         case system(bold: Bool, italic: Bool)

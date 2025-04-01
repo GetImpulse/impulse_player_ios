@@ -1,6 +1,6 @@
 import AVKit
-//import MediaPlayer
 import Combine
+import GoogleCast
 
 @MainActor
 protocol InternalPlayerDelegate: AnyObject, Sendable {
@@ -19,6 +19,8 @@ protocol InternalPlayerDelegate: AnyObject, Sendable {
     
     @available(iOS 15.0, *)
     func onQualityButtonPressed(qualities: [VideoQuality])
+    
+    func onRemoteDeviceButtonPressed()
     
     // MARK: Player actions
     func onVideoReady()
@@ -51,56 +53,17 @@ class Player: UIView {
     // MARK: Components
     private var playerLayer: AVPlayerLayer = AVPlayerLayer()
     
-    private let overlayView: UIView = UIView().forAutoLayout()
-    
-    private let topLeadingToolBar: UIStackView = UIStackView().forAutoLayout()
-    private let fullScreenInfoContainer: UIStackView = UIStackView().forAutoLayout()
-    private let closeButton: PlayerBarButton = PlayerBarButton().forAutoLayout()
-    private let titleLabel: UILabel = UILabel().forAutoLayout()
-    private let subtitleLabel: UILabel = UILabel().forAutoLayout()
-    
-    private let topTrailingToolBar: UIStackView = UIStackView().forAutoLayout()
-    private let routePickerView: AVRoutePickerView = AVRoutePickerView().forAutoLayout()
-    private let pipButton: PlayerBarButton = PlayerBarButton().forAutoLayout()
-    
-    private let centerPlaybackControlBar: UIStackView = UIStackView().forAutoLayout()
-    private let goBackwardButton: PlayerPlaybackButton = PlayerPlaybackButton().forAutoLayout()
-    private let playPauseButton: PlayerPlaybackButton = PlayerPlaybackButton().forAutoLayout()
-    private let goForwardButton: PlayerPlaybackButton = PlayerPlaybackButton().forAutoLayout()
-    private let loadingActivity: PlayerLoadingView = PlayerLoadingView().forAutoLayout()
-    
-    private let timeLine: PlayerTimeline = PlayerTimeline().forAutoLayout()
-    private let currentTimeLabel: UILabel = UILabel().forAutoLayout()
-    private let timeSeparatorLabel: UILabel = UILabel().forAutoLayout()
-    private let durationLabel: UILabel = UILabel().forAutoLayout()
-    
-    private let bottomLeadingToolBar: UIStackView = UIStackView().forAutoLayout()
-    private let rateButton: PlayerBarButton = PlayerBarButton().forAutoLayout()
-    private let qualityButton: PlayerBarButton = PlayerBarButton().forAutoLayout()
-    
-    private let bottomTrailingToolBar: UIStackView = UIStackView().forAutoLayout()
-    private let fullScreenButton: PlayerBarButton = PlayerBarButton().forAutoLayout()
-    
+    private let standardPlayerOverlayView: StandardPlayerOverlayView = StandardPlayerOverlayView().forAutoLayout()
     private let pictureInPictureOverlayView: UIView = UIView().forAutoLayout()
+    private let castOverlayView: CastOverlayView = CastOverlayView().forAutoLayout()
     
-    private let retryContainer: UIStackView = UIStackView().forAutoLayout()
-    private let retryLabel: UILabel = UILabel().forAutoLayout()
-    private let retryErrorCodeLabel: UILabel = UILabel().forAutoLayout()
-    private let retryButton: UIButton = UIButton(type: .roundedRect).forAutoLayout()
-    
-    private lazy var playbackControls: [UIView] = [goBackwardButton, playPauseButton, goForwardButton]
-    private lazy var videoControls: [UIView] = [routePickerView, pipButton, loadingActivity, currentTimeLabel, timeSeparatorLabel, durationLabel, rateButton, qualityButton, fullScreenButton]
-    
-    // MARK: Constraints
-    private var verticalLayoutPaddingConstraints: [NSLayoutConstraint] = []
-    private var horizontalLayoutPaddingConstraints: [NSLayoutConstraint] = []
-    private var timeWidthConstraint: NSLayoutConstraint!
+    private let loadingActivity: PlayerLoadingView = PlayerLoadingView().forAutoLayout()
+    private let playerRetryView: PlayerRetryView = PlayerRetryView().forAutoLayout()
     
     // MARK: DI
     var isEmbedded: Bool {
         didSet {
-            fullScreenInfoContainer.isHidden = !isFullScreen && isEmbedded
-            fullScreenButton.isHidden = !isEmbedded
+            standardPlayerOverlayView.setFullScreenButtonVisibility(visible: isEmbedded)
         }
     }
     
@@ -119,7 +82,9 @@ class Player: UIView {
     private let manifestHelper = ManifestHelper()
     private let activityPassthroughSubject = PassthroughSubject<Void, Never>()
     private let buttonSymbolConfig = UIImage.SymbolConfiguration(pointSize: 20.0, weight: .regular, scale: .medium)
-    private let timeLabelSpacing: CGFloat = 4.0
+    
+    private let sessionManager: GCKSessionManager = GCKCastContext.sharedInstance().sessionManager
+    private let castMediaController: GCKUIMediaController = GCKUIMediaController()
     
     private var pictureInPictureControllerIfLoaded: AVPictureInPictureController? {
         didSet {
@@ -135,15 +100,13 @@ class Player: UIView {
                 
                 // NOTE: Setting up subscriptions to assign the observable properties to the video container
                 pictureInPictureViewControllerSubscribers = []
-                pipButton.isEnabled = pictureInPictureControllerIfLoaded?.isPictureInPicturePossible ?? true
+                standardPlayerOverlayView.setPipButtonEnabled(pictureInPictureControllerIfLoaded?.isPictureInPictureActive ?? true)
                 pictureInPictureControllerIfLoaded?.publisher(for: \.isPictureInPicturePossible)
                     .removeDuplicates()
                     .receive(on: RunLoop.main)
                     .sink { [weak self] change in
-                        self?.pipButton.isEnabled = change
+                        self?.standardPlayerOverlayView.setPipButtonEnabled(change)
                     }.store(in: &subscriptions)
-                
-                pipButton.isHidden = !ImpulsePlayer.shared.settings.pictureInPictureEnabled
             }
         }
     }
@@ -151,13 +114,7 @@ class Player: UIView {
     private var qualities: [VideoQuality] = [.automatic] {
         didSet {
             if #unavailable(iOS 15.0) {
-                let actions = qualities.map { quality in
-                    UIAction(title: quality.resolution) { [weak self] action in
-                        self?.quality = quality
-                    }
-                }
-                let menu = UIMenu(title: VideoQuality.header, children: actions)
-                self.qualityButton.menu = menu
+                standardPlayerOverlayView.setQualityOptions(qualities)
             }
         }
     }
@@ -168,22 +125,27 @@ class Player: UIView {
     private var timeObserver: Any?
     private var developerButtons: [String: PlayerBarButton] = [:]
     private var itemDidEnd: Bool = false
+    private var startedCastingFromThisVideo: Bool = false
+    private var stoppedCastingFromThisVideo: Bool = false
     
     private var isSeeking: Bool = false
+    private var video: Video?
+    private var mediaInformation: GCKMediaInformation?
+    
+    // Observable properties
+    @objc dynamic var isPlaying: Bool = false
+    @objc dynamic var videoState: PlayerState = .loading
+    @objc dynamic var progress: TimeInterval = 0
+    @objc dynamic var duration: TimeInterval = 0
+    @objc dynamic var error: Error?
     
     // MARK: Internal Properties
     weak var delegate: InternalPlayerDelegate?
     
     var isFullScreen: Bool = false {
         didSet {
-            fullScreenButton.setImage(.library(named: isFullScreen ? "Video/FullScreen/Exit" : "Video/FullScreen/Start"), for: .normal)
-            
             loadingActivity.size = isFullScreen ? .large : .small
-            playPauseButton.heightConstraintConstant = isFullScreen ? 68.0: 48.0
-            horizontalLayoutPaddingConstraints.forEach { $0.constant = isFullScreen ? 16.0: 16.0 } // NOTE: It's possible to make the fullscreen horizontal padding differ from non-fullscreen
-            verticalLayoutPaddingConstraints.forEach { $0.constant = isFullScreen ? 8.0: 8.0 } // NOTE: It's possible to make the fullscreen horizontal padding differ from non-fullscreen
-            
-            fullScreenInfoContainer.isHidden = !isFullScreen && isEmbedded
+            standardPlayerOverlayView.switchFullScreen(on: isFullScreen)
             
             if isFullScreen {
                 delegate?.fullScreenDidBecomeActive()
@@ -196,65 +158,37 @@ class Player: UIView {
     var rate: Speed = ._1 {
         didSet {
             player?.rate = rate.speed
-            rateButton.setImage(.library(named: rate.iconName), for: .normal)
+            standardPlayerOverlayView.setRate(rate)
         }
     }
     
     var quality: VideoQuality = .automatic {
         didSet {
             player?.currentItem?.preferredPeakBitRate = quality.bitrate
-            qualityButton.setTitle(quality.definition.buttonText, for: .normal)
-            qualityButton.setImage(nil, for: .normal)
-            var image: UIImage?
-            if let iconName = quality.definition.iconName {
-                image = .library(named: iconName)
-            }
-            qualityButton.setImage(image, for: .normal)
+            standardPlayerOverlayView.setQuality(quality)
         }
     }
     
     var state: State = .unknown {
         didSet {
+            determineOverlayVisibility()
             switch state {
             case .unknown:
                 videoState = .loading
             case .loading:
                 videoState = .loading
-                videoControls.forEach { $0.isHidden = true }
-                playbackControls.forEach { $0.isHidden = true }
-                timeLine.alpha = 0
                 loadingActivity.startAnimating()
-                retryContainer.isHidden = true
             case .readyToPlay:
                 videoState = .ready
-                videoControls.forEach {
-                    // NOTE: Making an exception to display pip button when setting is disabled.
-                    if $0 == pipButton {
-                        $0.isHidden = !ImpulsePlayer.shared.settings.pictureInPictureEnabled
-                    } else {
-                        $0.isHidden = false
-                    }
-                }
-                playbackControls.forEach { $0.isHidden = false }
-                timeLine.alpha = 1
                 loadingActivity.stopAnimating()
-                retryContainer.isHidden = true
             case .error(let error):
                 videoState = .error
-                videoControls.forEach { $0.isHidden = true }
-                playbackControls.forEach { $0.isHidden = true }
-                timeLine.alpha = 0
                 loadingActivity.stopAnimating()
                 
-                retryLabel.text = .library(for: "controls_error_title")
-                if let nsError = error as? NSError {
-                    retryErrorCodeLabel.text = String(format: .library(for: "controls_error_x"), nsError.code)
-                    retryErrorCodeLabel.isHidden = false
-                } else {
-                    retryErrorCodeLabel.isHidden = true
-                }
+                // NOTE: Display the retry view with the found error code
+                let code = (error as? NSError)?.code
+                playerRetryView.update(code: code)
                 
-                retryContainer.isHidden = false
                 delegate?.onError(message: error?.localizedDescription ?? "Unknown error")
             }
         }
@@ -262,7 +196,7 @@ class Player: UIView {
     
     // MARK: Private Write, Internal Read-Only
     private(set) var timeControlStatus: AVPlayer.TimeControlStatus = .paused {
-        didSet {            
+        didSet {
             NSLog("Time Control Status: \(timeControlStatus)")
             NSLog("Waiting To Play At Specified Rate. Reason: \(player?.reasonForWaitingToPlay.debugDescription ?? "Unknown Reason")")
             if case .error(_) = state {
@@ -282,20 +216,37 @@ class Player: UIView {
         }
     }
     
-    // Observable properties
-    @objc dynamic var isPlaying: Bool = false
-    @objc dynamic var videoState: PlayerState = .loading
-    @objc dynamic var progress: TimeInterval = 0
-    @objc dynamic var duration: TimeInterval = 0
-    @objc dynamic var error: Error?
+    private(set) var controlType: ControlType = .standard {
+        didSet {
+            determineOverlayVisibility()
+        }
+    }
+}
+
+extension Player {
+    
+    enum ControlType {
+        case standard
+        case pictureInPicture
+        case casting
+    }
+}
+
+extension Player {
     
     // MARK: Internal Read-Only
+    var isRemote: Bool {
+        return sessionManager.hasConnectedCastSession()
+    }
+    
     var currentItem: AVPlayerItem? {
         player?.currentItem
     }
     
     // MARK: Internal Functions
     func load(video: Video) {
+        self.video = video
+        
         loadVideo(video)
     }
     
@@ -334,11 +285,11 @@ class Player: UIView {
         
         switch playerButton.position {
         case .topEnd:
-            topTrailingToolBar.addArrangedSubview(button)
+            standardPlayerOverlayView.addControl(button, position: .topTrailing)
         case .bottomStart:
-            bottomLeadingToolBar.addArrangedSubview(button)
+            standardPlayerOverlayView.addControl(button, position: .bottomBottomLeading)
         case .bottomEnd:
-            bottomTrailingToolBar.addArrangedSubview(button)
+            standardPlayerOverlayView.addControl(button, position: .bottomBottomTrailing)
         }
         
         developerButtons[key] = button
@@ -349,65 +300,32 @@ class Player: UIView {
             button.removeFromSuperview()
         }
     }
+    
+    func connectTo(_ remoteDevice: RemoteDevice) {
+        switch remoteDevice {
+        case .thisDevice:
+            stoppedCastingFromThisVideo = true
+            sessionManager.endSessionAndStopCasting(true)
+        case .airplay:
+            stoppedCastingFromThisVideo = true
+            sessionManager.endSessionAndStopCasting(true)
+            standardPlayerOverlayView.triggerAirplaySelection()
+        case .cast(let device):
+            startedCastingFromThisVideo = true
+            sessionManager.startSession(with: device)
+        }
+    }
 }
 
 // MARK: - Actions
 private extension Player {
     
-    @objc func toggleFullScreen() {
-        isFullScreen.toggle()
-    }
-    
-    @objc func dismiss() {
+    func dismiss() {
         activityPassthroughSubject.send()
         if isEmbedded {
             isFullScreen = false
         } else {
             delegate?.onDismissPressed()
-        }
-    }
-    
-    @objc func playPause() {
-        activityPassthroughSubject.send()
-        if player?.rate != 0 {
-            player?.pause()
-        } else {
-            if itemDidEnd {
-                seek(to: 0)
-                itemDidEnd = false
-            }
-            player?.play()
-        }
-    }
-    
-    @objc func goForward() {
-        activityPassthroughSubject.send()
-        guard let player else { return }
-        player.seek(to: player.currentTime() + CMTime(seconds: 10, preferredTimescale: 1))
-    }
-    
-    @objc func goBackward() {
-        activityPassthroughSubject.send()
-        guard let player else { return }
-        player.seek(to: player.currentTime() - CMTime(seconds: 10, preferredTimescale: 1))
-    }
-    
-    @objc func seekBarChanged() {
-        isSeeking = true
-        guard let duration = player?.currentItem?.duration else { return }
-        let time = CMTime(seconds: Double(timeLine.value) * duration.seconds, preferredTimescale: duration.timescale)
-        currentTimeLabel.text = cmTimeToMinutesAndSeconds(cmTime: time)
-    }
-    
-    @objc func seeking() {
-        guard let duration = player?.currentItem?.duration else {
-            isSeeking = false
-            return
-        }
-        let time = CMTime(seconds: Double(timeLine.value) * duration.seconds, preferredTimescale: duration.timescale)
-        Task {
-            await player?.seek(to: time)
-            isSeeking = false
         }
     }
     
@@ -420,37 +338,17 @@ private extension Player {
         }
     }
     
-    @objc func retry() {
-        guard let currentItem, let asset = currentItem.asset as? AVURLAsset else { return }
-        let currentTime = currentItem.currentTime()
-        loadAsset(withURL: asset.url) { [weak self] in
-            self?.player?.seek(to: currentTime)
-        }
-    }
-    
-    @available(iOS 15.0, *)
-    @objc func selectRate() {
-        activityPassthroughSubject.send()
-        delegate?.onRateButtonPressed()
-    }
-    
-    @available(iOS 15.0, *)
-    @objc func selectQuality() {
-        activityPassthroughSubject.send()
-        delegate?.onQualityButtonPressed(qualities: qualities)
-    }
-    
     @objc func showOverlay() {
         activityPassthroughSubject.send()
         UIView.animate(withDuration: 0.5) { [weak self] in
-            self?.overlayView.alpha = 1
+            self?.standardPlayerOverlayView.alpha = 1
         }
     }
     
     @objc func hideOverlay() {
         guard case .readyToPlay = state else { return }
         UIView.animate(withDuration: 0.5) { [weak self] in
-            self?.overlayView.alpha = 0
+            self?.standardPlayerOverlayView.alpha = 0
         }
     }
 }
@@ -465,441 +363,51 @@ private extension Player {
         showTapGesture.numberOfTapsRequired = 1
         addGestureRecognizer(showTapGesture)
         
+        quality = .automatic
+        isFullScreen = false
+        
+        if ImpulsePlayer.shared.settings.pictureInPictureEnabled {
+            loadPictureInPictureControllerIfNeeded()
+        }
+        
         setupLayout()
         setupObservers()
+        
+        if sessionManager.hasConnectedSession() {
+            switchToRemotePlayback(shouldAutoPlay: false)
+        } else if pictureInPictureControllerIfLoaded?.isPictureInPictureActive == true {
+            controlType = .pictureInPicture
+        } else {
+            controlType = .standard
+        }
     }
     
     func setupLayout() {
         setupOverlayView()
         setupPictureInPictureOverlayView()
+        setupCastOverlayView()
+        setupPlayerRetryView()
+        
+        setupLoadingActivity()
     }
     
     func setupOverlayView() {
-        overlayView.backgroundColor = .black.withAlphaComponent(0.3)
+        standardPlayerOverlayView.backgroundColor = .black.withAlphaComponent(0.3)
         
         let hideTapGesture = UITapGestureRecognizer(target: self, action: #selector(hideOverlay))
         hideTapGesture.numberOfTapsRequired = 1
-        overlayView.addGestureRecognizer(hideTapGesture)
+        standardPlayerOverlayView.addGestureRecognizer(hideTapGesture)
         
-        addSubview(overlayView)
+        addSubview(standardPlayerOverlayView)
         NSLayoutConstraint.activate([
-            overlayView.topAnchor.constraint(equalTo: topAnchor),
-            overlayView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            overlayView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            overlayView.leadingAnchor.constraint(equalTo: leadingAnchor)
+            standardPlayerOverlayView.topAnchor.constraint(equalTo: topAnchor),
+            standardPlayerOverlayView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            standardPlayerOverlayView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            standardPlayerOverlayView.leadingAnchor.constraint(equalTo: leadingAnchor)
         ])
         
-        let layout = UIStackView().forAutoLayout()
-        layout.axis = .vertical
-        layout.spacing = 8.0
-        layout.distribution = .equalSpacing
-        layout.alignment = .center
-        overlayView.addSubview(layout)
-        
-        verticalLayoutPaddingConstraints = [
-            layout.topAnchor.constraint(equalTo: overlayView.topAnchor, constant: 8.0),
-            overlayView.bottomAnchor.constraint(equalTo: layout.bottomAnchor, constant: 8.0)
-        ]
-        horizontalLayoutPaddingConstraints = [
-            overlayView.trailingAnchor.constraint(equalTo: layout.trailingAnchor, constant: 16.0),
-            layout.leadingAnchor.constraint(equalTo: overlayView.leadingAnchor, constant: 16.0)
-        ]
-        [verticalLayoutPaddingConstraints, horizontalLayoutPaddingConstraints].flatMap { $0 }.forEach { $0.isActive = true }
-        
-        let topLayout = setupTopLayout()
-        layout.addArrangedSubview(topLayout)
-        topLayout.widthAnchor.constraint(equalTo: layout.widthAnchor).isActive = true
-        topLayout.setContentHuggingPriority(.required, for: .vertical)
-        
-        let centerLayout = setupCenterLayout()
-        overlayView.addSubview(centerLayout)
-        NSLayoutConstraint.activate([
-            centerLayout.centerXAnchor.constraint(equalTo: overlayView.centerXAnchor),
-            centerLayout.centerYAnchor.constraint(equalTo: overlayView.centerYAnchor)
-        ])
-        
-        let bottomLayout = setupBottomLayout()
-        layout.addArrangedSubview(bottomLayout)
-        bottomLayout.widthAnchor.constraint(equalTo: layout.widthAnchor).isActive = true
-        bottomLayout.setContentHuggingPriority(.required, for: .vertical)
-    }
-    
-    // MARK: Top Layout
-    func setupTopLayout() -> UIStackView {
-        let topLayout = UIStackView().forAutoLayout()
-        topLayout.axis = .horizontal
-        topLayout.spacing = 0
-        topLayout.alignment = .center
-        topLayout.distribution = .equalSpacing
-        //        topLayout.backgroundColor = .yellow
-        
-        topLeadingToolBar.axis = .horizontal
-        topLeadingToolBar.spacing = 8.0
-        topLeadingToolBar.alignment = .center
-        topLeadingToolBar.distribution = .fill
-        //        topLeadingToolBar.backgroundColor = .blue
-        topLayout.addArrangedSubview(topLeadingToolBar)
-        
-        topTrailingToolBar.axis = .horizontal
-        topTrailingToolBar.spacing = 8.0
-        topTrailingToolBar.alignment = .center
-        topTrailingToolBar.distribution = .fill
-        //        topTrailingToolBar.backgroundColor = .purple
-        topLayout.addArrangedSubview(topTrailingToolBar)
-        
-        setupTopLayoutBars()
-        
-        return topLayout
-    }
-    
-    func setupTopLayoutBars() {
-        setupTopLeadingLayoutBar()
-        setupTopTrailingLayoutBar()
-    }
-    
-    func setupTopLeadingLayoutBar() {
-        setupFullScreenInfoContainer()
-    }
-    
-    func setupFullScreenInfoContainer() {
-        fullScreenInfoContainer.isHidden = !isFullScreen && isEmbedded
-        fullScreenInfoContainer.axis = .horizontal
-        fullScreenInfoContainer.spacing = 8.0
-        fullScreenInfoContainer.alignment = .center
-        topLeadingToolBar.addArrangedSubview(fullScreenInfoContainer)
-        
-        setupCloseButton()
-        fullScreenInfoContainer.addArrangedSubview(closeButton)
-        
-        let infoContainer = setupInfoContainer()
-        fullScreenInfoContainer.addArrangedSubview(infoContainer)
-    }
-    
-    func setupCloseButton()  {
-        closeButton.setImage(.library(named: "Back_Icon"), for: .normal)
-        closeButton.addTarget(self, action: #selector(dismiss), for: .touchUpInside)
-    }
-    
-    func setupInfoContainer() -> UIStackView {
-        let infoContainer = UIStackView().forAutoLayout()
-        infoContainer.axis = .vertical
-        infoContainer.spacing = 0
-        infoContainer.alignment = .leading
-        topLeadingToolBar.addArrangedSubview(infoContainer)
-        
-        setupTitleLabel()
-        infoContainer.addArrangedSubview(titleLabel)
-        
-        setupSubtitleLabel()
-        infoContainer.addArrangedSubview(subtitleLabel)
-        
-        return infoContainer
-    }
-    
-    func setupTitleLabel() {
-        titleLabel.font = ImpulsePlayer.shared.appearance.h4.font
-        titleLabel.textColor = .white
-    }
-    
-    func setupSubtitleLabel() {
-        subtitleLabel.font = ImpulsePlayer.shared.appearance.s1.font
-        subtitleLabel.textColor = .white
-    }
-    
-    func setupTopTrailingLayoutBar() {
-        // NOTE: Currently not displaying airplay. Not correctly displayed and unsure if standard button is good enough.
-//        setupAirplayButton()
-        setupPictureInPictureButton()
-    }
-    
-    func setupAirplayButton() {
-        routePickerView.tintColor = .white
-        routePickerView.prioritizesVideoDevices = true
-        routePickerView.heightAnchor.constraint(equalToConstant: 20.0).isActive = true
-        routePickerView.widthAnchor.constraint(equalTo: routePickerView.heightAnchor).isActive = true
-        topTrailingToolBar.addArrangedSubview(routePickerView)
-    }
-    
-    func setupPictureInPictureButton() {
-        guard AVPictureInPictureController.isPictureInPictureSupported() else {
-            return
-        }
-        
-        let startImage: UIImage? = .library(named: "Video/PictureInPicture/Start")
-        let stopImage: UIImage? = .library(named: "Video/PictureInPicture/Exit")
-        
-        pipButton.setImage(startImage, for: .normal)
-        pipButton.setImage(stopImage, for: .selected)
-        
-        pipButton.addTarget(self, action: #selector(togglePictureInPicture), for: .touchUpInside)
-        pipButton.isHidden = true
-        topTrailingToolBar.addArrangedSubview(pipButton)
-        
-        if ImpulsePlayer.shared.settings.pictureInPictureEnabled {
-            loadPictureInPictureControllerIfNeeded()
-        }
-    }
-    
-    // MARK: Center Layout
-    func setupCenterLayout() -> UIView {
-        let centerLayout = UIView().forAutoLayout()
-        
-        centerPlaybackControlBar.axis = .horizontal
-        centerPlaybackControlBar.spacing = 32.0
-        centerPlaybackControlBar.alignment = .center
-        centerPlaybackControlBar.distribution = .fill
-        centerLayout.addSubview(centerPlaybackControlBar)
-        NSLayoutConstraint.activate([
-            centerPlaybackControlBar.topAnchor.constraint(equalTo: centerLayout.topAnchor),
-            centerPlaybackControlBar.leadingAnchor.constraint(equalTo: centerLayout.leadingAnchor),
-            centerPlaybackControlBar.bottomAnchor.constraint(equalTo: centerLayout.bottomAnchor),
-            centerPlaybackControlBar.trailingAnchor.constraint(equalTo: centerLayout.trailingAnchor),
-        ])
-        
-        setupCenterLayoutBar()
-        
-        return centerLayout
-    }
-    
-    func setupCenterLayoutBar() {
-        setupGoBackwardButton()
-        setupPlayPauseButton()
-        setupGoForwardButton()
-        setupLoadingActivity()
-        setupRetryContainer()
-    }
-    
-    func setupGoBackwardButton() {
-        goBackwardButton.setImage(.library(named: "Video/Playback/Replay"), for: .normal)
-        goBackwardButton.addTarget(self, action: #selector(goBackward), for: .touchUpInside)
-        goBackwardButton.heightConstraintConstant = 36.0
-        
-        centerPlaybackControlBar.addArrangedSubview(goBackwardButton)
-    }
-    
-    func setupPlayPauseButton() {
-        playPauseButton.setImage(.library(named: "Video/Playback/Play"), for: .normal)
-        playPauseButton.addTarget(self, action: #selector(playPause), for: .touchUpInside)
-        playPauseButton.heightConstraintConstant = isFullScreen ? 68.0: 48.0
-        
-        centerPlaybackControlBar.addArrangedSubview(playPauseButton)
-    }
-    
-    func setupGoForwardButton() {
-        goForwardButton.setImage(.library(named: "Video/Playback/Forward"), for: .normal)
-        goForwardButton.addTarget(self, action: #selector(goForward), for: .touchUpInside)
-        goForwardButton.heightConstraintConstant = 36.0
-        
-        centerPlaybackControlBar.addArrangedSubview(goForwardButton)
-    }
-    
-    func setupLoadingActivity() {
-        loadingActivity.hidesWhenStopped = true
-        loadingActivity.color = ImpulsePlayer.shared.appearance.accentColor
-        loadingActivity.size = .small
-        
-        centerPlaybackControlBar.addArrangedSubview(loadingActivity)
-    }
-    
-    func setupRetryContainer() {
-        retryContainer.isHidden = true
-        retryContainer.axis = .vertical
-        retryContainer.spacing = 16.0
-        retryContainer.alignment = .center
-        retryContainer.distribution = .fill
-        centerPlaybackControlBar.addArrangedSubview(retryContainer)
-        
-        let headerStackView = UIStackView(arrangedSubviews: [retryLabel, retryErrorCodeLabel]).forAutoLayout()
-        headerStackView.axis = .vertical
-        headerStackView.spacing = 4.0
-        headerStackView.alignment = .center
-        headerStackView.distribution = .fill
-        retryContainer.addArrangedSubview(headerStackView)
-        
-        setupRetryLabel()
-        setupRetryErrorCodeLabel()
-        setupRetryButton()
-    }
-    
-    func setupRetryLabel() {
-        retryLabel.numberOfLines = 0
-        retryLabel.font = ImpulsePlayer.shared.appearance.h3.font
-        retryLabel.textColor = .white
-        retryLabel.textAlignment = .center
-    }
-    
-    func setupRetryErrorCodeLabel() {
-        retryErrorCodeLabel.numberOfLines = 0
-        retryErrorCodeLabel.font = ImpulsePlayer.shared.appearance.l4.font
-        retryErrorCodeLabel.textColor = .white.withAlphaComponent(0.6)
-        retryErrorCodeLabel.textAlignment = .center
-    }
-    
-    func setupRetryButton() {
-        if #available(iOS 15.0, *) {
-            retryButton.configuration = nil
-        }
-        
-        retryButton.backgroundColor = .clear
-        retryButton.tintColor = .white
-        retryButton.layer.cornerRadius = 16.0
-        retryButton.layer.borderColor = UIColor.white.cgColor
-        retryButton.layer.borderWidth = 1.0
-        retryButton.contentEdgeInsets = UIEdgeInsets(top: 0, left: 20.0, bottom: 0, right: 20.0)
-        retryButton.imageEdgeInsets = UIEdgeInsets(top: 0, left: -4.0, bottom: 0, right: 4.0)
-        retryButton.titleEdgeInsets = UIEdgeInsets(top: 0, left: 4.0, bottom: 0, right: -4.0)
-        retryButton.titleLabel?.font = ImpulsePlayer.shared.appearance.h4.font
-        retryButton.setImage(.library(named: "Video/RetryIcon"), for: .normal)
-        retryButton.setTitleColor(UIColor.white, for: .normal)
-        retryButton.setTitle(.library(for: "controls_retry"), for: .normal)
-        retryButton.addTarget(self, action: #selector(retry), for: .touchUpInside)
-        retryContainer.addArrangedSubview(retryButton)
-        retryButton.heightAnchor.constraint(equalToConstant: 40.0).isActive = true
-    }
-    
-    // MARK: Bottom Layout
-    func setupBottomLayout() -> UIStackView {
-        let containingLayout = UIStackView().forAutoLayout()
-        containingLayout.axis = .vertical
-        containingLayout.spacing = 8.0
-        containingLayout.alignment = .center
-        containingLayout.distribution = .fill
-        
-        let timelineLayout = UIStackView().forAutoLayout()
-        timelineLayout.axis = .horizontal
-        timelineLayout.spacing = 8.0
-        timelineLayout.alignment = .center
-        timelineLayout.distribution = .fill
-        containingLayout.addArrangedSubview(timelineLayout)
-        timelineLayout.widthAnchor.constraint(equalTo: containingLayout.widthAnchor).isActive = true
-        
-        timelineLayout.addArrangedSubview(timeLine)
-        
-        let timeTextLayout = UIStackView().forAutoLayout()
-        timeTextLayout.axis = .horizontal
-        timeTextLayout.spacing = timeLabelSpacing
-        timeTextLayout.alignment = .center
-        timeTextLayout.distribution = .fill
-        timelineLayout.addArrangedSubview(timeTextLayout)
-        timeWidthConstraint = timeTextLayout.widthAnchor.constraint(equalToConstant: 0)
-        timeTextLayout.setContentHuggingPriority(.required, for: .horizontal)
-        
-        timeTextLayout.addArrangedSubview(currentTimeLabel)
-        timeTextLayout.addArrangedSubview(timeSeparatorLabel)
-        timeTextLayout.addArrangedSubview(durationLabel)
-        
-        let bottomLayout = UIStackView().forAutoLayout()
-        bottomLayout.axis = .horizontal
-        bottomLayout.spacing = 0
-        bottomLayout.alignment = .center
-        bottomLayout.distribution = .equalSpacing
-        containingLayout.addArrangedSubview(bottomLayout)
-        bottomLayout.widthAnchor.constraint(equalTo: containingLayout.widthAnchor).isActive = true
-
-        bottomLeadingToolBar.axis = .horizontal
-        bottomLeadingToolBar.spacing = 8.0
-        bottomLeadingToolBar.alignment = .center
-        bottomLeadingToolBar.distribution = .fill
-        bottomLayout.addArrangedSubview(bottomLeadingToolBar)
-        
-        bottomTrailingToolBar.axis = .horizontal
-        bottomTrailingToolBar.spacing = 8.0
-        bottomTrailingToolBar.alignment = .center
-        bottomTrailingToolBar.distribution = .fill
-        bottomLayout.addArrangedSubview(bottomTrailingToolBar)
-        
-        setupBottomLayoutBars()
-        
-        return containingLayout
-    }
-        
-    func setupBottomLayoutBars() {
-        setupTimeLineBar()
-        
-        setupBottomLeadingLayoutBar()
-        setupBottomTrailingLayoutBar()
-    }
-    
-    func setupBottomLeadingLayoutBar() {
-        setupQualityButton()
-        setupRateButton()
-    }
-    
-    func setupQualityButton() {
-        // NOTE: Quality button becomes available when a video is loaded in
-        quality = .automatic
-        if #available(iOS 15.0, *) {
-            qualityButton.addTarget(self, action: #selector(selectQuality), for: .touchUpInside)
-        } else {
-            qualityButton.showsMenuAsPrimaryAction = true
-        }
-        bottomLeadingToolBar.addArrangedSubview(qualityButton)
-    }
-    
-    func setupRateButton() {
-        rateButton.setImage(.library(named: Speed._1.iconName), for: .normal)
-        bottomLeadingToolBar.addArrangedSubview(rateButton)
-        
-        if #available(iOS 15.0, *) {
-            self.rateButton.addTarget(self, action: #selector(selectRate), for: .touchUpInside)
-            return
-        }
-        
-        let actions = Speed.allCases.map { rate in
-            UIAction(title: "\(rate.speed)x") { [weak self] _ in
-                self?.rate = rate
-            }
-        }
-        let menu = UIMenu(title: Speed.header, children: actions)
-        self.rateButton.menu = menu
-        self.rateButton.showsMenuAsPrimaryAction = true
-    }
-    
-    func setupBottomTrailingLayoutBar() {
-        setupFullScreenButton()
-    }
-    
-    func setupFullScreenButton() {
-        fullScreenButton.isHidden = !isEmbedded
-        fullScreenButton.setImage(.library(named: isFullScreen ? "Video/FullScreen/Exit" : "Video/FullScreen/Start"), for: .normal)
-        fullScreenButton.addTarget(self, action: #selector(toggleFullScreen), for: .touchUpInside)
-        bottomTrailingToolBar.addArrangedSubview(fullScreenButton)
-    }
-    
-    func setupTimeLineBar() {
-        setupTimeLine()
-        setupTimeLabels()
-    }
-    
-    func setupTimeLine() {
-        timeLine.addTarget(self, action: #selector(seekBarChanged), for: .valueChanged)
-        timeLine.addTarget(self, action: #selector(seeking), for: [.touchUpInside, .touchUpOutside])
-        timeLine.setColoredThumb()
-    }
-    
-    func setupTimeLabels() {
-        setupCurrentTimeLabel()
-        setupTimeSeparatorLabel()
-        setupDurationLabel()
-    }
-    
-    func setupCurrentTimeLabel() {
-        currentTimeLabel.text = cmTimeToMinutesAndSeconds(cmTime: .zero)
-        currentTimeLabel.font = ImpulsePlayer.shared.appearance.l7.font
-        currentTimeLabel.textColor = .white
-        currentTimeLabel.textAlignment = .right
-    }
-    
-    func setupTimeSeparatorLabel() {
-        timeSeparatorLabel.text = "/"
-        timeSeparatorLabel.font = ImpulsePlayer.shared.appearance.l7.font
-        timeSeparatorLabel.textColor = .white
-    }
-    
-    func setupDurationLabel() {
-        durationLabel.text = cmTimeToMinutesAndSeconds(cmTime: .zero)
-        durationLabel.font = ImpulsePlayer.shared.appearance.l7.font
-        durationLabel.textColor = .white.withAlphaComponent(0.6)
+        standardPlayerOverlayView.setFullScreenButtonVisibility(visible: isEmbedded)
+        standardPlayerOverlayView.delegate = self
     }
     
     // MARK: Picture In Picture OverlayView
@@ -946,6 +454,42 @@ private extension Player {
         centerStackView.addArrangedSubview(exitLabel)
     }
     
+    func setupCastOverlayView() {
+        castOverlayView.isHidden = true
+        castOverlayView.delegate = self
+        addSubview(castOverlayView)
+        NSLayoutConstraint.activate([
+            castOverlayView.topAnchor.constraint(equalTo: topAnchor),
+            castOverlayView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            castOverlayView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            castOverlayView.leadingAnchor.constraint(equalTo: leadingAnchor)
+        ])
+        
+        sessionManager.add(self)
+        castOverlayView.setDevice(sessionManager.currentSession?.device)
+    }
+    
+    func setupPlayerRetryView() {
+        playerRetryView.delegate = self
+        addSubview(playerRetryView)
+        NSLayoutConstraint.activate([
+            playerRetryView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            playerRetryView.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+    }
+    
+    func setupLoadingActivity() {
+        loadingActivity.hidesWhenStopped = true
+        loadingActivity.color = ImpulsePlayer.shared.appearance.accentColor
+        loadingActivity.size = .small
+        
+        addSubview(loadingActivity)
+        NSLayoutConstraint.activate([
+            loadingActivity.centerXAnchor.constraint(equalTo: centerXAnchor),
+            loadingActivity.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+    }
+    
     // MARK: Observers
     func setupObservers() {
         setupFrameObserver()
@@ -978,8 +522,6 @@ private extension Player {
                 } else {
                     self?.pictureInPictureControllerIfLoaded = nil
                 }
-                
-                self?.pipButton.isHidden = !settings.pictureInPictureEnabled
             }
             .store(in: &subscriptions)
     }
@@ -998,8 +540,10 @@ private extension Player {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] rate in
                 guard let self else { return }
-                self.isPlaying = rate > 0
-                self.playPauseButton.setImage(.library(named: rate != 0 ? "Video/Playback/Pause" : "Video/Playback/Play"), for: .normal)
+                let isPlaying = rate > 0
+                self.isPlaying = isPlaying
+                self.standardPlayerOverlayView.switchToPlaying(isPlaying)
+                
                 if rate == 0 {
                     self.delegate?.onPause()
                 } else {
@@ -1008,6 +552,9 @@ private extension Player {
             }
             .store(in: &playerSubscribers)
         
+        if let timeObserver {
+            player.removeTimeObserver(timeObserver)
+        }
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 1), queue: .main, using: { [weak self] _ in
             Task { @MainActor in
                 self?.handleTimeChange()
@@ -1096,24 +643,11 @@ private extension Player {
     }
     
     func handleTimeChange() {
+        print("Seeking: \(isSeeking)")
         guard !isSeeking, let time = player?.currentItem?.currentTime(), let duration = player?.currentItem?.duration else { return }
         // NOTE: Sets the current progress for the item in seconds
         progress = time.seconds
-        
-        currentTimeLabel.text = cmTimeToMinutesAndSeconds(cmTime: time)
-        let value = time.seconds / duration.seconds
-        timeLine.value = Float(value)
-    }
-                                                       
-    func cmTimeToMinutesAndSeconds(cmTime: CMTime) -> String {
-        let totalSeconds = CMTimeGetSeconds(cmTime)
-        if totalSeconds > 0 {
-            let minutes = Int(totalSeconds) / 60
-            let seconds = Int(totalSeconds) % 60
-            return String(format: "%02d:%02d", minutes, seconds)
-        } else {
-            return "00:00"
-        }
+        standardPlayerOverlayView.setProgressTime(time, duration: duration)
     }
 }
 
@@ -1121,8 +655,7 @@ private extension Player {
 private extension Player {
     
     func loadVideo(_ video: Player.Video) {
-        titleLabel.text = video.title
-        subtitleLabel.text = video.subtitle
+        standardPlayerOverlayView.setTitle(video.title, subtitle: video.subtitle)
         
         Task { [weak self] in
             self?.qualities = (try? await self?.manifestHelper.fetchSupportedVideoQualities(with: video.url)) ?? [.automatic]
@@ -1134,7 +667,7 @@ private extension Player {
     func loadAsset(withURL url: URL, onComplete: (() -> Void)? = nil) {
         state = .loading
         // NOTE: Possible disable cellular access to an item
-//        let options = [AVURLAssetAllowsCellularAccessKey: false]
+        //        let options = [AVURLAssetAllowsCellularAccessKey: false]
         let asset = AVURLAsset(url: url)
         
         playerItemSubscribers = []
@@ -1148,12 +681,8 @@ private extension Player {
                 guard let self else { return }
                 switch status {
                 case .readyToPlay:
-                    let durationMaxWidth = cmTimeToMinutesAndSeconds(cmTime: playerItem.duration).width(containerHeight: 1.0)
-                    // NOTE: The maximum width of the time label is the items duration * 2 + spacing between items and a fault margin of 4.0
-                    let maxWidth = durationMaxWidth * 2 + timeLabelSpacing * 2 + 4.0
-                    timeWidthConstraint.constant = maxWidth
-                    timeWidthConstraint.isActive = maxWidth > 0
-                    durationLabel.text = cmTimeToMinutesAndSeconds(cmTime: playerItem.duration)
+                    standardPlayerOverlayView.setDuration(playerItem.duration)
+                    castOverlayView.setDuration(playerItem.duration)
                     
                     try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
                     try? AVAudioSession.sharedInstance().setActive(true)
@@ -1198,6 +727,234 @@ private extension Player {
             player?.replaceCurrentItem(with: playerItem)
         }
     }
+    
+    func loadCastMediaInformation(_ video: Video?, continueFrom: TimeInterval = 0, autoPlay: Bool) {
+        guard let video else {
+            print("No video available")
+            return
+        }
+        
+        guard let session = sessionManager.currentCastSession else {
+            print("No cast session available")
+            return
+        }
+        
+        guard let remoteMediaClient = session.remoteMediaClient else {
+            print("Remote media client is not available")
+            return
+        }
+        remoteMediaClient.add(self)
+
+        let mediaLoadRequestDataBuilder = GCKMediaLoadRequestDataBuilder()
+        mediaLoadRequestDataBuilder.mediaInformation = createMediaInformation(video)
+        mediaLoadRequestDataBuilder.startTime = continueFrom
+        mediaLoadRequestDataBuilder.autoplay = NSNumber(value: autoPlay)
+        let mediaLoadRequestData = mediaLoadRequestDataBuilder.build()
+        
+        let request = remoteMediaClient.loadMedia(with: mediaLoadRequestData)
+        request.delegate = self
+    }
+    
+    func createMediaInformation(_ video: Video) -> GCKMediaInformation {
+        let mediaInfoBuilder = GCKMediaInformationBuilder.init(contentURL: video.url)
+        
+        let metadata = GCKMediaMetadata(metadataType: .movie)
+        if let title = video.title {
+            metadata.setString(title, forKey: kGCKMetadataKeyTitle)
+        }
+        if let subtitle = video.subtitle {
+            metadata.setString(subtitle, forKey: kGCKMetadataKeySubtitle)
+        }
+        mediaInfoBuilder.metadata = metadata
+        
+        return mediaInfoBuilder.build()
+    }
+}
+
+// MARK: - Standard Overlay View Delegate
+extension Player: StandardPlayerOverlayViewDelegate {
+    
+    func onClosePressed(in standardPlayerOverlayView: StandardPlayerOverlayView) {
+        dismiss()
+    }
+    
+    func onPictureInPicturePressed(in standardPlayerOverlayView: StandardPlayerOverlayView) {
+        togglePictureInPicture()
+    }
+    
+    func onGoForwardPressed(in standardPlayerOverlayView: StandardPlayerOverlayView) {
+        activityPassthroughSubject.send()
+        guard let player else { return }
+        player.seek(to: player.currentTime() + CMTime(seconds: 10, preferredTimescale: 1))
+    }
+    
+    func onPlayPausePressed(in standardPlayerOverlayView: StandardPlayerOverlayView) {
+        activityPassthroughSubject.send()
+        if player?.rate != 0 {
+            player?.pause()
+        } else {
+            if itemDidEnd {
+                seek(to: 0)
+                itemDidEnd = false
+            }
+            player?.play()
+        }
+    }
+    
+    func onGoBackwardPressed(in standardPlayerOverlayView: StandardPlayerOverlayView) {
+        activityPassthroughSubject.send()
+        guard let player else { return }
+        player.seek(to: player.currentTime() - CMTime(seconds: 10, preferredTimescale: 1))
+    }
+    
+    func onSeekBarChanged(value: Float, in standardPlayerOverlayView: StandardPlayerOverlayView) {
+        isSeeking = true
+        
+        guard let duration = player?.currentItem?.duration else {
+            isSeeking = false
+            return
+        }
+        let time = CMTime(seconds: Double(value) * duration.seconds, preferredTimescale: duration.timescale)
+        standardPlayerOverlayView.setProgressTime(time, duration: duration)
+    }
+    
+    func onSeeking(value: Float, in standardPlayerOverlayView: StandardPlayerOverlayView) {
+        guard let duration = player?.currentItem?.duration else {
+            isSeeking = false
+            return
+        }
+        
+        let time = CMTime(seconds: Double(value) * duration.seconds, preferredTimescale: duration.timescale)
+        Task {
+            await player?.seek(to: time)
+            isSeeking = false
+        }
+    }
+    
+    func onToggleFullScreen(in standardPlayerOverlayView: StandardPlayerOverlayView) {
+        isFullScreen.toggle()
+    }
+    
+    @available(iOS 15.0, *)
+    func onSelectQuality(in standardPlayerOverlayView: StandardPlayerOverlayView) {
+        activityPassthroughSubject.send()
+        delegate?.onQualityButtonPressed(qualities: qualities)
+    }
+    
+    @available(iOS 15.0, *)
+    func onSelectRate(in standardPlayerOverlayView: StandardPlayerOverlayView) {
+        activityPassthroughSubject.send()
+        delegate?.onRateButtonPressed()
+    }
+
+    func onSelectRemoteDevice(in standardPlayerOverlayView: StandardPlayerOverlayView) {
+        activityPassthroughSubject.send()
+        delegate?.onRemoteDeviceButtonPressed()
+    }
+    
+    func onQualitySelected(quality: VideoQuality, in standardPlayerOverlayView: StandardPlayerOverlayView) {
+        self.quality = quality
+    }
+    
+    func onRateSelected(rate: Speed, in standardPlayerOverlayView: StandardPlayerOverlayView) {
+        self.rate = rate
+    }
+}
+
+// MARK: - Cast Overlay View Delegate
+extension Player: CastOverlayViewDelegate {
+    
+    func onGoForwardPressed(in castOverlayView: CastOverlayView) {
+        guard let currentSession = sessionManager.currentCastSession,
+              playerVideoMatchesSession(currentSession),
+              let remoteMediaClient = currentSession.remoteMediaClient,
+              let remoteMediaStatus = remoteMediaClient.mediaStatus
+        else {
+            return
+        }
+        
+        let progress = remoteMediaStatus.streamPosition + 10
+        let duration = remoteMediaStatus.mediaInformation?.streamDuration ?? 0
+        castOverlayView.setProgressTime(CMTime(seconds: progress, preferredTimescale: 1), duration: CMTime(seconds: duration, preferredTimescale: 1))
+        
+        let options = GCKMediaSeekOptions()
+        options.interval = progress
+        remoteMediaClient.seek(with: options)
+    }
+    
+    func onPlayPausePressed(in castOverlayView: CastOverlayView) {
+        guard let currentSession = sessionManager.currentCastSession,
+              let remoteMediaClient = currentSession.remoteMediaClient,
+              let remoteMediaStatus = remoteMediaClient.mediaStatus
+        else {
+            loadCastMediaInformation(video, continueFrom: player?.currentTime().seconds ?? 0, autoPlay: true)
+            return
+        }
+        
+        if !playerVideoMatchesSession(currentSession) {
+            let currentTime = player?.currentTime().seconds
+            loadCastMediaInformation(video, continueFrom: currentTime ?? 0, autoPlay: true)
+        } else if remoteMediaStatus.playerState == .playing {
+            remoteMediaClient.pause()
+        } else if remoteMediaStatus.playerState == .paused {
+            remoteMediaClient.play()
+        }
+    }
+    
+    func onGoBackwardPressed(in castOverlayView: CastOverlayView) {
+        guard let currentSession = sessionManager.currentCastSession,
+              playerVideoMatchesSession(currentSession),
+              let remoteMediaClient = currentSession.remoteMediaClient,
+              let remoteMediaStatus = remoteMediaClient.mediaStatus
+        else {
+            return
+        }
+        
+        let progress = remoteMediaStatus.streamPosition - 10
+        let duration = remoteMediaStatus.mediaInformation?.streamDuration ?? 0
+        castOverlayView.setProgressTime(CMTime(seconds: progress, preferredTimescale: 1), duration: CMTime(seconds: duration, preferredTimescale: 1))
+        
+        let options = GCKMediaSeekOptions()
+        options.interval = progress
+        remoteMediaClient.seek(with: options)
+    }
+    
+    func onSelectRemoteDevice(in castOverlayView: CastOverlayView) {
+        delegate?.onRemoteDeviceButtonPressed()
+    }
+    
+    func onSeekBarChanged(value: Float, in castOverlayView: CastOverlayView) {
+        guard let duration = player?.currentItem?.duration else {
+            return
+        }
+        let time = CMTime(seconds: Double(value) * duration.seconds, preferredTimescale: duration.timescale)
+        castOverlayView.setProgressTime(time, duration: duration)
+    }
+
+    func onSeeking(value: Float, in castOverlayView: CastOverlayView) {
+        guard let duration = player?.currentItem?.duration else {
+            return
+        }
+        
+        let time = CMTime(seconds: Double(value) * duration.seconds, preferredTimescale: duration.timescale)
+        if let remoteMediaClient =  sessionManager.currentSession?.remoteMediaClient {
+            let options = GCKMediaSeekOptions()
+            options.interval = time.seconds
+            remoteMediaClient.seek(with: options)
+        }
+    }
+}
+
+// MARK: - Player Retry View Delegate
+extension Player: PlayerRetryViewDelegate {
+    
+    func onRetryPressed(in playerRetryView: PlayerRetryView) {
+        guard let currentItem, let asset = currentItem.asset as? AVURLAsset else { return }
+        let currentTime = currentItem.currentTime()
+        loadAsset(withURL: asset.url) { [weak self] in
+            self?.player?.seek(to: currentTime)
+        }
+    }
 }
 
 // MARK: - Picture in Picture Controller Delegate
@@ -1205,31 +962,37 @@ extension Player: @preconcurrency AVPictureInPictureControllerDelegate {
     
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController,
                                                 restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
-        delegate?.player(self, restoreUserInterfaceForPictureInPictureStopWithCompletionHandler: completionHandler)
+        Task { @MainActor in
+            delegate?.player(self, restoreUserInterfaceForPictureInPictureStopWithCompletionHandler: completionHandler)
+        }
     }
     
     func pictureInPictureControllerWillStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        delegate?.playerWillStartPictureInPicture()
-        overlayView.isHidden = true
-        playerLayer.isHidden = true
-        pictureInPictureOverlayView.isHidden = false
-        if isEmbedded {
-            isFullScreen = false
-        } else {
-            dismiss()
+        Task { @MainActor in
+            delegate?.playerWillStartPictureInPicture()
+            controlType = .pictureInPicture
+            
+            if isEmbedded {
+                isFullScreen = false
+            } else {
+                dismiss()
+            }
         }
     }
     
     func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-        delegate?.playerDidStopPictureInPicture()
-        overlayView.isHidden = false
-        playerLayer.isHidden = false
-        pictureInPictureOverlayView.isHidden = true
-        bringSubviewToFront(overlayView)
+        Task { @MainActor in
+            delegate?.playerDidStopPictureInPicture()
+            if controlType == .pictureInPicture {
+                controlType = .standard
+            }
+        }
     }
     
     func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, failedToStartPictureInPictureWithError error: any Error) {
-        delegate?.playerFailedToStartPictureInPictureWithError(error)
+        Task { @MainActor in
+            delegate?.playerFailedToStartPictureInPictureWithError(error)
+        }
     }
 }
 
@@ -1256,6 +1019,26 @@ extension UIView {
         self.translatesAutoresizingMaskIntoConstraints = false
         return self
     }
+    
+    var isVisible: Bool {
+        get {
+            !isHidden
+        }
+        set {
+            isHidden = !newValue
+        }
+    }
+}
+
+extension CALayer {
+    var isVisible: Bool {
+        get {
+            !isHidden
+        }
+        set {
+            isHidden = !newValue
+        }
+    }
 }
 
 extension String {
@@ -1279,9 +1062,142 @@ extension String {
 // MARK: Private Helper methods
 private extension Player {
 
-    private func loadPictureInPictureControllerIfNeeded() {
+    func loadPictureInPictureControllerIfNeeded() {
         if pictureInPictureControllerIfLoaded == nil {
             pictureInPictureControllerIfLoaded = AVPictureInPictureController(playerLayer: playerLayer)
+        }
+    }
+    
+    ///Determines the visibility for overlays
+    func determineOverlayVisibility() {
+        // NOTE: Currently not setting picture in picture overlay visibility. Picture in picture is only possible if the video had already been loaded without error
+        switch state {
+        case .unknown, .loading:
+            playerLayer.isVisible = false
+            standardPlayerOverlayView.isVisible = false
+            pictureInPictureOverlayView.isVisible = false
+            castOverlayView.isVisible = false
+            playerRetryView.isVisible = false
+        case .readyToPlay:
+            playerLayer.isVisible = controlType == .standard
+            standardPlayerOverlayView.isVisible = controlType == .standard
+            
+            pictureInPictureOverlayView.isVisible = controlType == .pictureInPicture
+            castOverlayView.isVisible = controlType == .casting
+            playerRetryView.isVisible = false
+        case .error:
+            playerLayer.isVisible = false
+            standardPlayerOverlayView.isVisible = false
+            pictureInPictureOverlayView.isVisible = false
+            castOverlayView.isVisible = false
+            playerRetryView.isVisible = true
+        }
+    }
+}
+
+// MARK: - Google Cast
+extension Player {
+    
+    // MARK: Mode switching
+    func switchToLocalPlayback(shouldAutoPlay: Bool, continueFromTime: TimeInterval = 0) {
+        controlType = .standard
+        
+        if stoppedCastingFromThisVideo {
+            stoppedCastingFromThisVideo = false
+            seek(to: continueFromTime)
+            
+            if shouldAutoPlay {
+                play()
+            }
+        }
+        
+        sessionManager.currentCastSession?.remoteMediaClient?.remove(self)
+    }
+
+    func switchToRemotePlayback(shouldAutoPlay: Bool) {
+        controlType = .casting
+        
+        pause()
+        pictureInPictureControllerIfLoaded?.stopPictureInPicture()
+        
+        sessionManager.currentCastSession?.remoteMediaClient?.add(self)
+        if startedCastingFromThisVideo {
+            startedCastingFromThisVideo = false
+            loadCastMediaInformation(video, continueFrom: player?.currentTime().seconds ?? 0, autoPlay: shouldAutoPlay)
+        }
+    }
+    
+    func playerVideoMatchesSession(_ session: GCKSession) -> Bool {
+        session.remoteMediaClient?.mediaStatus?.mediaInformation?.contentURL == video?.url
+    }
+}
+
+// MARK: GCKSessionManagerListener
+extension Player: @preconcurrency GCKSessionManagerListener {
+      
+    func sessionManager(_ manager: GCKSessionManager, didStart session: GCKSession) {
+        Task { @MainActor in
+            switchToRemotePlayback(shouldAutoPlay: playerVideoMatchesSession(session) || isPlaying)
+            
+            castOverlayView.setDevice(session.device)
+        }
+    }
+    
+    func sessionManager(_: GCKSessionManager, didResumeSession session: GCKSession) {
+        Task { @MainActor in
+            switchToRemotePlayback(shouldAutoPlay: false)
+            
+            castOverlayView.setDevice(session.device)
+        }
+    }
+    
+    func sessionManager(_ manager: GCKSessionManager, didEnd session: GCKSession, withError error: Error?) {
+        Task { @MainActor in
+            switchToLocalPlayback(shouldAutoPlay: playerVideoMatchesSession(session), continueFromTime: castMediaController.lastKnownStreamPosition)
+            
+            castOverlayView.setDevice(nil)
+        }
+    }
+    
+    func sessionManager(_: GCKSessionManager,
+                        didFailToResumeSession session: GCKSession,
+                        withError _: Error?
+    ) {
+        Task { @MainActor in
+            switchToLocalPlayback(shouldAutoPlay: playerVideoMatchesSession(session), continueFromTime: castMediaController.lastKnownStreamPosition)
+            
+            castOverlayView.setDevice(nil)
+        }
+    }
+}
+
+// MARK: GCKRequestDelegate
+extension Player: @preconcurrency GCKRequestDelegate {
+    
+    func request(_ request: GCKRequest, didFailWithError error: GCKError) {
+        Task { @MainActor in
+            print("Media status: Did fail for: \(video?.url.lastPathComponent)")
+            // TODO: Determine what to do when the request to load the media information on the receiver id failed
+        }
+    }
+}
+
+// MARK: GCKRemoteMediaClientListener
+extension Player: @preconcurrency GCKRemoteMediaClientListener {
+    
+    func remoteMediaClient(_ client: GCKRemoteMediaClient, didUpdate mediaStatus: GCKMediaStatus?) {
+        Task { @MainActor in
+            guard let mediaStatus, mediaStatus.mediaInformation?.contentURL == video?.url else {
+                print("Media status: Switching player state to nil for: \(video?.url.lastPathComponent)")
+                castOverlayView.switchPlayerState(nil)
+                return
+            }
+            print("Media status: Switching player state on cast overlay for found URL: \(mediaStatus.mediaInformation?.contentURL?.lastPathComponent)")
+            castOverlayView.switchPlayerState(mediaStatus.playerState)
+            
+            let progress = mediaStatus.streamPosition
+            let duration = mediaStatus.mediaInformation?.streamDuration ?? 0
+            castOverlayView.setProgressTime(CMTime(seconds: progress, preferredTimescale: 1), duration: CMTime(seconds: duration, preferredTimescale: 1))
         }
     }
 }

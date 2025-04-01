@@ -1,4 +1,5 @@
 import UIKit
+import GoogleCast
 
 class PlayerBarButton: UIButton {
     

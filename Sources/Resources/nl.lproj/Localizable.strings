@@ -18,3 +18,11 @@
 "speed_title" = "Afspeelsnelheid";
 "video_player_playing_picture_in_picture" = "Deze video wordt in 'Beeld-in-beeld' modus afgespeeld.";
 "controls_cast" = "Cast";
+
+// Remote device selection
+"remote_device_title" = "Apparaat selecteren";
+"remote_device_disconnect" = "Dit apparaat";
+"remote_device_airplay" = "Airplay- en Bluetooth-apparaten";
+"remote_device_unknown" = "Onbekend apparaat";
+
+"controls_connected_to_x" = "Verbonden met %@";

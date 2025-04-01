@@ -131,9 +131,7 @@ public extension ImpulsePlayerView {
     }
     
     func seek(to seconds: TimeInterval) {
-        if let player {
-            
-        } else {
+        if player == nil {
             seekToTime = seconds
         }
         coordinator?.playerViewControllerIfLoaded?.player.seek(to: seconds)

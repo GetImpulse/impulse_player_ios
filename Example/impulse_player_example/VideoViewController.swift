@@ -5,73 +5,102 @@ import Combine
 
 class VideoViewController: UIViewController {
     
-    private let video: Video
-    private let secondVideo: Video?
+    private lazy var scrollView: UIScrollView = {
+        let scrollView = UIScrollView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        return scrollView
+    }()
     
-    init(video: Video, secondVideo: Video?) {
-        self.video = video
-        self.secondVideo = secondVideo
-        super.init(nibName: nil, bundle: nil)
-        
-    }
+    private lazy var contentStackView: UIStackView = {
+        let contentStackView = UIStackView(arrangedSubviews: [impulsePlayer, impulsePlayerTwo, impulsePlayerThree, impulsePlayerFour])
+        contentStackView.translatesAutoresizingMaskIntoConstraints = false
+        contentStackView.axis = .vertical
+        contentStackView.spacing = 8.0
+        contentStackView.alignment = .fill
+        return contentStackView
+    }()
     
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
     
+    private lazy var impulsePlayer: ImpulsePlayerView = { ImpulsePlayerView(parent: self) }()
+    private lazy var impulsePlayerTwo: ImpulsePlayerView = { ImpulsePlayerView(parent: self) }()
+    private lazy var impulsePlayerThree: ImpulsePlayerView = { ImpulsePlayerView(parent: self) }()
+    private lazy var impulsePlayerFour: ImpulsePlayerView = { ImpulsePlayerView(parent: self) }()
+
     override func viewDidLoad() {
         super.viewDidLoad()
         setup()
     }
-    
-    private lazy var impulsePlayer: ImpulsePlayerView = { ImpulsePlayerView(parent: self) }()
-    private lazy var impulsePlayerTwo: ImpulsePlayerView = { ImpulsePlayerView(parent: self) }()
 }
 
 private extension VideoViewController {
     
     func setup() {
+        setupLayout()
+        
         view.backgroundColor = .systemBackground
         
-        impulsePlayer.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(impulsePlayer)
-        NSLayoutConstraint.activate([
-            impulsePlayer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            impulsePlayer.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
-            impulsePlayer.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
-            impulsePlayer.heightAnchor.constraint(equalTo: view.widthAnchor, multiplier: 9.0/16.0)
-        ])
+        let videoOne = Settings.videos[0]
+        impulsePlayer.load(
+            title: videoOne.title,
+            subtitle: "Video 1 subtitle",
+            url: videoOne.url
+        )
         
-        if let secondVideo {
-            impulsePlayerTwo.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(impulsePlayerTwo)
-            NSLayoutConstraint.activate([
-                impulsePlayerTwo.topAnchor.constraint(equalTo: impulsePlayer.bottomAnchor),
-                impulsePlayerTwo.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
-                impulsePlayerTwo.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
-                impulsePlayerTwo.heightAnchor.constraint(equalTo: view.widthAnchor, multiplier: 9.0/16.0)
-            ])
-            
-            impulsePlayerTwo.load(
-                title: secondVideo.title,
-                subtitle: secondVideo.subtitle,
-                url: secondVideo.url
-            )
-        }
+        let videoTwo = Settings.videos[1]
+        impulsePlayerTwo.load(
+            title: videoTwo.title,
+            subtitle: "Video 2 subtitle",
+            url: videoTwo.url
+        )
         
-        commands()
+        let videoThree = Settings.videos[2]
+        impulsePlayerThree.load(
+            title: videoThree.title,
+            subtitle: "Video 3 subtitle",
+            url: videoThree.url
+        )
+        
+        impulsePlayerFour.load(url: URL(string: "http://localhost")!)
+        
+//        commands()
+//        getters()
 //        setters()
         listeners()
-        settings()
         customization()
     }
     
+    func setupLayout() {
+        view.addSubview(scrollView)
+        NSLayoutConstraint.activate([
+            scrollView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+        ])
+        
+        
+        scrollView.addSubview(contentStackView)
+        NSLayoutConstraint.activate([
+            contentStackView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+            contentStackView.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+            contentStackView.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+            contentStackView.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+            contentStackView.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor)
+        ])
+        
+        NSLayoutConstraint.activate([
+            impulsePlayer.heightAnchor.constraint(equalTo: view.widthAnchor, multiplier: 9.0/16.0),
+            impulsePlayerTwo.heightAnchor.constraint(equalTo: view.widthAnchor, multiplier: 9.0/16.0),
+            impulsePlayerThree.heightAnchor.constraint(equalTo: view.widthAnchor, multiplier: 9.0/16.0),
+            impulsePlayerFour.heightAnchor.constraint(equalTo: view.widthAnchor, multiplier: 9.0/16.0)
+        ])
+    }
+    
     func commands() {
-        impulsePlayer.load(title: nil, subtitle: nil, url: video.url)
         impulsePlayer.load(
-            title: video.title,
-            subtitle: video.subtitle,
-            url: video.url
+            title: "Title",
+            subtitle: "Subtitle",
+            url: URL(string: "url")!
         )
         impulsePlayer.play()
         impulsePlayer.pause()
@@ -104,14 +133,6 @@ private extension VideoViewController {
     func listeners() {
         impulsePlayer.delegate = self
         impulsePlayerTwo.delegate = self
-    }
-    
-    func settings() {
-        ImpulsePlayer.setSettings(
-            settings: ImpulsePlayerSettings(
-                pictureInPictureEnabled: true  // Default `false`
-            )
-        )
     }
     
     func customization() {

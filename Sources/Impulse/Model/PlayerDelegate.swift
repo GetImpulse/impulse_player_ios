@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 public protocol PlayerDelegate: AnyObject {
     func onReady(_ impulsePlayerView: ImpulsePlayerView)
     func onPlay(_ impulsePlayerView: ImpulsePlayerView)

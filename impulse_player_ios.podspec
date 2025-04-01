@@ -10,8 +10,13 @@ Impulse Player iOS.
   s.author           = { 'Webuildapps' => 'info@webuildapps.com' }
   s.source           = { :path => '.' }
   s.module_name = "ImpulsePlayer"
-  s.source_files = 'Sources/**/*.swift'
-  s.resources = "Sources/Resources/*"
+  s.source_files = "Sources/**/*.swift"
+  s.resource_bundles = {
+    'ImpulseResources' => ["Sources/Resources/**/*"]
+  }
+
+  s.dependency 'google-cast-sdk', '>= 4.8.0'
+  s.static_framework = true
   
   s.platform = :ios, '14.0'
 end

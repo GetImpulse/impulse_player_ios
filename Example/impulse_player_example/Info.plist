@@ -2,6 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_googlecast._tcp</string>
+		<string>_01128E51._googlecast._tcp</string>
+	</array>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Inter-Variable.ttf</string>

@@ -18,3 +18,12 @@
 "speed_title" = "Playback speed";
 "video_player_playing_picture_in_picture" = "This video is playing in 'Picture-in-picture' mode.";
 "controls_cast" = "Cast";
+
+// Remote device selection
+"remote_device_title" = "Select device";
+"remote_device_disconnect" = "This device";
+"remote_device_airplay" = "Airplay- and Bluetooth-devices";
+"remote_device_unknown" = "Unknown device";
+
+"controls_connected_to_x" = "Connected to '%@'";
+

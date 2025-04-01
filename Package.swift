@@ -15,12 +15,17 @@ let package = Package(
             name: "ImpulsePlayer",
             targets: ["ImpulsePlayer"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/SRGSSR/google-cast-sdk", exact: "4.8.3")
+    ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
         .target(
             name: "ImpulsePlayer",
-            dependencies: [],
+            dependencies: [
+                .product(name: "GoogleCast", package: "google-cast-sdk")
+            ],
             resources: [
                 .process("Resources")  // Include the Resources folder for images
             ]

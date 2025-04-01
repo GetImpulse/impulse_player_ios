@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		FA74B7EA2CD90774009A110E /* ImpulsePlayer in Frameworks */ = {isa = PBXBuildFile; productRef = FA74B7E92CD90774009A110E /* ImpulsePlayer */; };
+		EAA12F182D91975E00458B78 /* ImpulsePlayer in Frameworks */ = {isa = PBXBuildFile; productRef = EAA12F172D91975E00458B78 /* ImpulsePlayer */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -69,7 +69,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				FA74B7EA2CD90774009A110E /* ImpulsePlayer in Frameworks */,
+				EAA12F182D91975E00458B78 /* ImpulsePlayer in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -96,7 +96,6 @@
 				EA96DCB02CC79A0400376A33 /* impulse_player_example */,
 				EA96DCC72CC79A0600376A33 /* impulse_player_exampleTests */,
 				EA96DCD12CC79A0600376A33 /* impulse_player_exampleUITests */,
-				EA96DD0F2CC7C42A00376A33 /* Frameworks */,
 				EA96DCAF2CC79A0400376A33 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -109,13 +108,6 @@
 				EA96DCCE2CC79A0600376A33 /* impulse_player_exampleUITests.xctest */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		EA96DD0F2CC7C42A00376A33 /* Frameworks */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -137,9 +129,6 @@
 				EA96DCB02CC79A0400376A33 /* impulse_player_example */,
 			);
 			name = impulse_player_example;
-			packageProductDependencies = (
-				FA74B7E92CD90774009A110E /* ImpulsePlayer */,
-			);
 			productName = impulse_player_example;
 			productReference = EA96DCAE2CC79A0400376A33 /* impulse_player_example.app */;
 			productType = "com.apple.product-type.application";
@@ -161,8 +150,6 @@
 				EA96DCC72CC79A0600376A33 /* impulse_player_exampleTests */,
 			);
 			name = impulse_player_exampleTests;
-			packageProductDependencies = (
-			);
 			productName = impulse_player_exampleTests;
 			productReference = EA96DCC42CC79A0600376A33 /* impulse_player_exampleTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -184,8 +171,6 @@
 				EA96DCD12CC79A0600376A33 /* impulse_player_exampleUITests */,
 			);
 			name = impulse_player_exampleUITests;
-			packageProductDependencies = (
-			);
 			productName = impulse_player_exampleUITests;
 			productReference = EA96DCCE2CC79A0600376A33 /* impulse_player_exampleUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
@@ -214,7 +199,7 @@
 				};
 			};
 			buildConfigurationList = EA96DCA92CC79A0400376A33 /* Build configuration list for PBXProject "impulse_player_example" */;
-			developmentRegion = da;
+			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
@@ -225,7 +210,7 @@
 			mainGroup = EA96DCA52CC79A0400376A33;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				EAB5C9272CDB6D5700F39CF2 /* XCLocalSwiftPackageReference ".." */,
+				EAA12F162D91975E00458B78 /* XCLocalSwiftPackageReference "../../impulse_player_ios" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = EA96DCAF2CC79A0400376A33 /* Products */;
@@ -306,11 +291,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = impulse_player_example/impulse_player_example.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = DEC5EH4254;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = impulse_player_example/Info.plist;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "impulse_player_example uses the local network to discover Cast-enabled devices on your WiFi\nnetwork.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
@@ -321,11 +309,11 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "nl.impulse.impulse-player-example";
+				MARKETING_VERSION = 0.2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.getimpulse.player.example;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -335,11 +323,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = impulse_player_example/impulse_player_example.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = DEC5EH4254;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = impulse_player_example/Info.plist;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "impulse_player_example uses the local network to discover Cast-enabled devices on your WiFi\nnetwork.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
@@ -350,11 +341,11 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "nl.impulse.impulse-player-example";
+				MARKETING_VERSION = 0.2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.getimpulse.player.example;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
@@ -594,14 +585,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		EAB5C9272CDB6D5700F39CF2 /* XCLocalSwiftPackageReference ".." */ = {
+		EAA12F162D91975E00458B78 /* XCLocalSwiftPackageReference "../../impulse_player_ios" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = ..;
+			relativePath = ../../impulse_player_ios;
 		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		FA74B7E92CD90774009A110E /* ImpulsePlayer */ = {
+		EAA12F172D91975E00458B78 /* ImpulsePlayer */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ImpulsePlayer;
 		};

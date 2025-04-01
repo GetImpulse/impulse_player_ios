@@ -6,7 +6,13 @@ extension Bundle {
 #if SWIFT_PACKAGE // SPM
         return module
 #else // CocoaPods
-        return Bundle(for: ImpulsePlayer.self)
+        let bundle = Bundle(for: ImpulsePlayer.self)
+        if let resourceURL = bundle.url(forResource: "ImpulseResources", withExtension: "bundle"),
+           let resourceBundle = Bundle(url: resourceURL) {
+            return resourceBundle
+        } else {
+            return bundle
+        }
 #endif
     }
     

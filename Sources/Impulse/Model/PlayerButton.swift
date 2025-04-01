@@ -17,7 +17,7 @@ public struct PlayerButton {
 
 public extension PlayerButton {
     
-    public enum Position {
+    enum Position {
         case topEnd
         case bottomStart
         case bottomEnd

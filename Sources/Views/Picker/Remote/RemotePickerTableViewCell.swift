@@ -1,7 +1,10 @@
 import UIKit
 
-class PickerTableViewCell: UITableViewCell {
+class RemotePickerTableViewCell: UITableViewCell {
 
+    private let iconWidth: CGFloat = 40.0
+    private let imageSize: CGSize = CGSize(width: 24.0, height: 24.0)
+    
     // MARK: Components
     private let containerView: UIView = {
         let view = UIView().forAutoLayout()
@@ -19,30 +22,44 @@ class PickerTableViewCell: UITableViewCell {
         return stackView
     }()
     
+    private lazy var iconImageView: UIImageView = {
+        let imageView = UIImageView().forAutoLayout()
+        imageView.tintColor = ImpulsePlayer.shared.appearance.accentColor
+        imageView.contentMode = .scaleAspectFit
+        
+        imageView.widthAnchor.constraint(equalToConstant: imageSize.width).isActive = true
+        imageView.heightAnchor.constraint(equalToConstant: imageSize.height).isActive = true
+        
+        return imageView
+    }()
+    
+    private lazy var iconImageViewContainer: UIView = {
+        let view = UIView().forAutoLayout()
+        view.backgroundColor = ImpulsePlayer.shared.appearance.accentColor.withAlphaComponent(0.1)
+        view.layer.cornerRadius = 16.0
+        view.layer.masksToBounds = true
+        
+        view.widthAnchor.constraint(equalToConstant: iconWidth).isActive = true
+        view.heightAnchor.constraint(equalTo: view.widthAnchor).isActive = true
+        
+        view.addSubview(iconImageView)
+        iconImageView.centerXAnchor.constraint(equalTo: view.centerXAnchor).isActive = true
+        iconImageView.centerYAnchor.constraint(equalTo: view.centerYAnchor).isActive = true
+        
+        return view
+    }()
+    
     private let titleLabel = {
         let label = UILabel().forAutoLayout()
         label.font = ImpulsePlayer.shared.appearance.p1.font
         return label
     }()
     
-    let radioButton: UIButton = {
-        let button = UIButton(type: .custom).forAutoLayout()
-        button.setImage(.library(named: "Picker/BTN radio unselected"), for: .normal)
-        button.setImage(.library(named: "Picker/BTN radio"), for: .selected)
-        button.imageView?.tintColor = ImpulsePlayer.shared.appearance.accentColor
-        button.isUserInteractionEnabled = false
-        return button
-    }()
-    
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
         
+        contentStackView.addArrangedSubview(iconImageViewContainer)
         contentStackView.addArrangedSubview(titleLabel)
-        contentStackView.addArrangedSubview(radioButton)
-        NSLayoutConstraint.activate([
-            radioButton.widthAnchor.constraint(equalToConstant: 32.0),
-            radioButton.heightAnchor.constraint(equalToConstant: 32.0)
-        ])
         
         containerView.addSubview(contentStackView)
         NSLayoutConstraint.activate([
@@ -65,11 +82,6 @@ class PickerTableViewCell: UITableViewCell {
         fatalError("init(coder:) has not been implemented")
     }
     
-    override func setSelected(_ selected: Bool, animated: Bool) {
-        super.setSelected(selected, animated: animated)
-        updateRadioButtonState(isSelected: selected)
-    }
-    
     override func setHighlighted(_ highlighted: Bool, animated: Bool) {
         super.setHighlighted(highlighted, animated: animated)
         containerView.backgroundColor = highlighted ?
@@ -77,11 +89,16 @@ class PickerTableViewCell: UITableViewCell {
             .clear
     }
     
-    private func updateRadioButtonState(isSelected: Bool) {
-        radioButton.isSelected = isSelected
+    func update(with viewModel: ViewModel) {
+        iconImageView.image = viewModel.icon
+        titleLabel.text = viewModel.title
     }
+}
+
+extension RemotePickerTableViewCell {
     
-    func update(title: String) {
-        titleLabel.text = title
+    struct ViewModel {
+        let icon: UIImage?
+        let title: String?
     }
 }

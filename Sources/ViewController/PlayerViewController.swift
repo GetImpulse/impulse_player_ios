@@ -155,6 +155,22 @@ extension PlayerViewController: InternalPlayerDelegate {
     }
     
     @available(iOS 15.0, *)
+    func onQualityButtonPressed(qualities: [VideoQuality]) {
+        let pickerTableView = PickerTableView(header: VideoQuality.header, items: qualities, currentlySelectedItem: player.quality)
+        pickerTableView.delegate = self
+        pickerTableView.modalPresentationStyle = .pageSheet
+        if let sheet = pickerTableView.sheetPresentationController {
+            sheet.detents = [.medium(), .large()]
+            sheet.preferredCornerRadius = 16.0
+            sheet.prefersGrabberVisible = true
+            sheet.prefersEdgeAttachedInCompactHeight = true
+            sheet.widthFollowsPreferredContentSizeWhenEdgeAttached = true
+            sheet.prefersScrollingExpandsWhenScrolledToEdge = false
+        }
+        present(pickerTableView, animated: true, completion: nil)
+    }
+    
+    @available(iOS 15.0, *)
     func onRateButtonPressed() {
         let pickerTableView = PickerTableView(header: Speed.header, items: Speed.allCases, currentlySelectedItem: player.rate)
         pickerTableView.delegate = self
@@ -170,19 +186,22 @@ extension PlayerViewController: InternalPlayerDelegate {
         present(pickerTableView, animated: true, completion: nil)
     }
     
-    @available(iOS 15.0, *)
-    func onQualityButtonPressed(qualities: [VideoQuality]) {
-        let pickerTableView = PickerTableView(header: VideoQuality.header, items: qualities, currentlySelectedItem: player.quality)
+    func onRemoteDeviceButtonPressed() {
+        let pickerTableView = RemotePickerTableView(header: RemoteDevice.header)
         pickerTableView.delegate = self
         pickerTableView.modalPresentationStyle = .pageSheet
-        if let sheet = pickerTableView.sheetPresentationController {
-            sheet.detents = [.medium(), .large()]
-            sheet.preferredCornerRadius = 16.0
-            sheet.prefersGrabberVisible = true
-            sheet.prefersEdgeAttachedInCompactHeight = true
-            sheet.widthFollowsPreferredContentSizeWhenEdgeAttached = true
-            sheet.prefersScrollingExpandsWhenScrolledToEdge = false
+        
+        if #available(iOS 15.0, *) {
+            if let sheet = pickerTableView.sheetPresentationController {
+                sheet.detents = [.medium(), .large()]
+                sheet.preferredCornerRadius = 16.0
+                sheet.prefersGrabberVisible = true
+                sheet.prefersEdgeAttachedInCompactHeight = true
+                sheet.widthFollowsPreferredContentSizeWhenEdgeAttached = true
+                sheet.prefersScrollingExpandsWhenScrolledToEdge = false
+            }
         }
+        
         present(pickerTableView, animated: true, completion: nil)
     }
     
@@ -207,6 +226,7 @@ extension PlayerViewController: InternalPlayerDelegate {
     }
 }
 
+// MARK: PickerTableView Delegate
 extension PlayerViewController: PickerTableViewDelegate {
     
     func selectedItemInPickerView<T>(_ pickerView: PickerTableView<T>, item: T) where T : CustomStringConvertible {
@@ -215,8 +235,18 @@ extension PlayerViewController: PickerTableViewDelegate {
             player.rate = rate
         case let quality as VideoQuality:
             player.quality = quality
+        case let remoteDevice as RemoteDevice:
+            player.connectTo(remoteDevice)
         default:
             break
         }
+    }
+}
+
+// MARK: RemotePickerTableView Delegate
+extension PlayerViewController: RemotePickerTableViewDelegate {
+    
+    func selectedItemInPickerView(_ pickerView: RemotePickerTableView, item: RemoteDevice) {
+        player.connectTo(item)
     }
 }

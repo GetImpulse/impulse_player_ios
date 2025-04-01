@@ -11,6 +11,7 @@ Features:
 - Playback speed selection.
 - Fullscreen handling.
 - Picture-in-Picture handling.
+- Support for casting.
 
 ## Installing
 
@@ -66,6 +67,8 @@ func setupImpulsePlayerView() {
 }
 ```
 
+---
+
 ### Commands
 
 The main commands to use the player:
@@ -81,6 +84,8 @@ impulsePlayer.pause()
 impulsePlayer.seek(to: 0)
 ```
 
+---
+
 ### Getters
 
 The values exposed by the player are KVO, which allows to observe the specific value if needed. 
@@ -94,6 +99,8 @@ impulsePlayer.error // Error?, default `nil`
 ```
 
 ### Delegate
+
+---
 
 Listening to events from the player.
 
@@ -123,6 +130,8 @@ extension ViewController: PlayerDelegate {
 }
 ```
 
+---
+
 ### Buttons
 
 The player can be further extended by adding custom buttons. These will be attached to the given position.
@@ -141,19 +150,69 @@ impulsePlayer.setButton(
 )
 ```
 
+---
+
 ### Settings
 
-Features can be enabled or disabled based on the settings. The defaults can be changed as follows:
+Features can be enabled or disabled via settings. You can customize the default values as follows:
 
 ```swift
 ImpulsePlayer.setSettings(
     settings: ImpulsePlayerSettings(
-        pictureInPictureEnabled: true  // Default `false`
+        pictureInPictureEnabled: true,  // Default: `false`
+        castReceiverApplicationId: "01128E51" // Chromecast receiver application ID; Default: `null` (disabled)
     )
 )
 ```
 
-> **Note**: To support Picture-in-picture mode. Add the 'Background Modes' capability in your targets project settings and enable 'Audio, AirPlay, and Picture in Picture'.
+> **Note**: To enable Picture-in-Picture mode, add the **'Background Modes'** capability in your target's project settings and enable **'Audio, AirPlay, and Picture in Picture'**.
+
+> **Note**: Setting up Chromecast with a custom receiver application ID requires additional configuration. See the section below.
+
+---
+
+### Chromecast Setup
+
+To enable Chromecast support in **ImpulsePlayer**, you must configure your **Info.plist** and **Capabilities settings**.
+
+#### 1. Add `NSBonjourServices` to your Info.plist
+
+To allow local network discovery, specify `NSBonjourServices` in your **Info.plist**.
+
+You need to add both `_googlecast._tcp` and `_your-receiver-application-id._googlecast._tcp` as services to ensure proper device discovery.
+
+- The receiver application ID should match the `castReceiverApplicationId` value in `ImpulsePlayerSettings`.
+- To set up your own Chromecast receiver ID, follow the [Google Cast Receiver App guide](https://developers.google.com/cast/docs/web_receiver).
+
+**Example:** Update the following definition in **Info.plist**, replacing `01128E51` with your app’s receiver ID.
+
+```xml
+<key>NSBonjourServices</key>
+<array>
+  <string>_googlecast._tcp</string>
+  <string>_01128E51._googlecast._tcp</string>
+</array>
+```
+
+#### 2. Add `NSLocalNetworkUsageDescription` to your Info.plist
+
+To ensure a smooth user experience, customize the **Local Network** permission prompt by adding an app-specific message in your **Info.plist**.
+
+```xml
+<key>NSLocalNetworkUsageDescription</key>
+<string>${PRODUCT_NAME} uses the local network to discover Cast-enabled devices on your Wi-Fi network.</string>
+```
+
+This message will be displayed in the **iOS Local Network Access** dialog when prompted.
+
+#### 3. Enable `Access Wi-Fi Information` Capability
+
+To allow Chromecast discovery and connection:
+
+- Enable the **Access Wi-Fi Information** capability in your **Target settings**.
+- Ensure that your provisioning profile includes **Access Wi-Fi Information** support. This can be configured in the [Apple Developer Portal](https://developer.apple.com/).
+
+---
 
 ### Customization
 
