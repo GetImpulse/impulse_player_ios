@@ -67,8 +67,6 @@ func setupImpulsePlayerView() {
 }
 ```
 
----
-
 ### Commands
 
 The main commands to use the player:
@@ -84,8 +82,6 @@ impulsePlayer.pause()
 impulsePlayer.seek(to: 0)
 ```
 
----
-
 ### Getters
 
 The values exposed by the player are KVO, which allows to observe the specific value if needed. 
@@ -99,8 +95,6 @@ impulsePlayer.error // Error?, default `nil`
 ```
 
 ### Delegate
-
----
 
 Listening to events from the player.
 
@@ -130,8 +124,6 @@ extension ViewController: PlayerDelegate {
 }
 ```
 
----
-
 ### Buttons
 
 The player can be further extended by adding custom buttons. These will be attached to the given position.
@@ -150,8 +142,6 @@ impulsePlayer.setButton(
 )
 ```
 
----
-
 ### Settings
 
 Features can be enabled or disabled via settings. You can customize the default values as follows:
@@ -169,13 +159,11 @@ ImpulsePlayer.setSettings(
 
 > **Note**: Setting up Chromecast with a custom receiver application ID requires additional configuration. See the section below.
 
----
-
-### Chromecast Setup
+#### Chromecast Setup
 
 To enable Chromecast support in **ImpulsePlayer**, you must configure your **Info.plist** and **Capabilities settings**.
 
-#### 1. Add `NSBonjourServices` to your Info.plist
+##### 1. Add `NSBonjourServices` to your Info.plist
 
 To allow local network discovery, specify `NSBonjourServices` in your **Info.plist**.
 
@@ -194,7 +182,7 @@ You need to add both `_googlecast._tcp` and `_your-receiver-application-id._goog
 </array>
 ```
 
-#### 2. Add `NSLocalNetworkUsageDescription` to your Info.plist
+##### 2. Add `NSLocalNetworkUsageDescription` to your Info.plist
 
 To ensure a smooth user experience, customize the **Local Network** permission prompt by adding an app-specific message in your **Info.plist**.
 
@@ -205,14 +193,12 @@ To ensure a smooth user experience, customize the **Local Network** permission p
 
 This message will be displayed in the **iOS Local Network Access** dialog when prompted.
 
-#### 3. Enable `Access Wi-Fi Information` Capability
+##### 3. Enable `Access Wi-Fi Information` Capability
 
 To allow Chromecast discovery and connection:
 
 - Enable the **Access Wi-Fi Information** capability in your **Target settings**.
-- Ensure that your provisioning profile includes **Access Wi-Fi Information** support. This can be configured in the [Apple Developer Portal](https://developer.apple.com/).
-
----
+- Ensure that your provisioning profile includes **Access Wi-Fi Information** support. When using Automatic Signing, this is done automatically. Otherwise this can be configured in the [Apple Developer Portal](https://developer.apple.com/).
 
 ### Customization
 
