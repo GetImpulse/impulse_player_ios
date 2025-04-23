@@ -40,6 +40,7 @@ private extension VideoViewController {
         view.backgroundColor = .systemBackground
         
         let videoOne = Settings.videos[0]
+        impulsePlayer.setCastEnabled(false)
         impulsePlayer.load(
             title: videoOne.title,
             subtitle: "Video 1 subtitle",

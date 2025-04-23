@@ -21,11 +21,20 @@ public final class ImpulsePlayerView: UIView {
     private var shouldPlayAutomatically: Bool = false
     private var seekToTime: TimeInterval?
     private var addedButtons: [(String, PlayerButton)] = []
+    private var castEnabled: Bool = true {
+        didSet {
+            player?.castEnabled = castEnabled
+        }
+    }
     
     public weak var delegate: PlayerDelegate? {
         didSet {
             delegate?.onReady(self)
         }
+    }
+    
+    public func setCastEnabled(_ enabled: Bool) {
+        castEnabled = enabled
     }
     
     // MARK: - Player Properties
@@ -35,6 +44,14 @@ public final class ImpulsePlayerView: UIView {
     @objc dynamic public private(set) var progress: TimeInterval = 0
     @objc dynamic public private(set) var duration: TimeInterval = 0
     @objc dynamic public private(set) var error: Error?
+
+    public override func didMoveToWindow() {
+        super.didMoveToWindow()
+        
+        if window == nil {
+            coordinator?.reset()
+        }
+    }
 }
 
 private extension ImpulsePlayerView {
@@ -46,13 +63,14 @@ private extension ImpulsePlayerView {
 
 public extension ImpulsePlayerView {
     
-    func load(title: String? = nil, subtitle: String? = nil, url: URL) {
+    public func load(title: String? = nil, subtitle: String? = nil, url: URL, headers: [String: String]? = nil) {
         guard let parent else { return }
         
         let video: Player.Video = .init(
             title: title,
             subtitle: subtitle,
-            url: url
+            url: url,
+            headers: headers
         )
         
         // NOTE: Resetting the coordinator if another video was already loaded on it
@@ -67,13 +85,14 @@ public extension ImpulsePlayerView {
             for: .init(
                 title: title,
                 subtitle: subtitle,
-                url: url
+                url: url,
+                headers: headers
             )
         )
         
         coord.delegate = self
-        print(coord)
         coord.embedInline(in: parent, container: self)
+        coord.playerViewControllerIfLoaded?.player.castEnabled = castEnabled
         
         coord.publisher(for: \.isPlaying)
             .sink { [weak self] isPlaying in

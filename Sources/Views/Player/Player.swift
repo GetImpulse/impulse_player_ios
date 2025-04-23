@@ -142,6 +142,17 @@ class Player: UIView {
     // MARK: Internal Properties
     weak var delegate: InternalPlayerDelegate?
     
+    var castEnabled: Bool = true {
+        didSet {
+            standardPlayerOverlayView.castEnabled = castEnabled
+            determineOverlayVisibility()
+            
+            if oldValue != castEnabled && castEnabled == false {
+                stopCastingIfNeeded()
+            }
+        }
+    }
+    
     var isFullScreen: Bool = false {
         didSet {
             loadingActivity.size = isFullScreen ? .large : .small
@@ -661,14 +672,21 @@ private extension Player {
             self?.qualities = (try? await self?.manifestHelper.fetchSupportedVideoQualities(with: video.url)) ?? [.automatic]
         }
         
-        loadAsset(withURL: video.url)
+        loadAsset(withURL: video.url, headers: video.headers)
     }
     
-    func loadAsset(withURL url: URL, onComplete: (() -> Void)? = nil) {
+    func loadAsset(withURL url: URL, headers: [String: String]?, onComplete: (() -> Void)? = nil) {
+        if let headers {
+            loadAsset(AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers]), onComplete: onComplete)
+        } else {
+            loadAsset(AVURLAsset(url: url), onComplete: onComplete)
+        }
+    }
+    
+    func loadAsset(_ asset: AVURLAsset, onComplete: (() -> Void)? = nil) {
         state = .loading
         // NOTE: Possible disable cellular access to an item
         //        let options = [AVURLAssetAllowsCellularAccessKey: false]
-        let asset = AVURLAsset(url: url)
         
         playerItemSubscribers = []
         let playerItem: AVPlayerItem = AVPlayerItem(asset: asset)
@@ -951,7 +969,7 @@ extension Player: PlayerRetryViewDelegate {
     func onRetryPressed(in playerRetryView: PlayerRetryView) {
         guard let currentItem, let asset = currentItem.asset as? AVURLAsset else { return }
         let currentTime = currentItem.currentTime()
-        loadAsset(withURL: asset.url) { [weak self] in
+        loadAsset(asset) { [weak self] in
             self?.player?.seek(to: currentTime)
         }
     }
@@ -1004,11 +1022,13 @@ extension Player {
         let title: String?
         let subtitle: String?
         let url: URL
+        let headers: [String: String]?
         
-        init(title: String?, subtitle: String?, url: URL) {
+        init(title: String?, subtitle: String?, url: URL, headers: [String: String]?) {
             self.title = title
             self.subtitle = subtitle
             self.url = url
+            self.headers = headers
         }
     }
 }
@@ -1079,11 +1099,10 @@ private extension Player {
             castOverlayView.isVisible = false
             playerRetryView.isVisible = false
         case .readyToPlay:
-            playerLayer.isVisible = controlType == .standard
-            standardPlayerOverlayView.isVisible = controlType == .standard
-            
+            playerLayer.isVisible = controlType == .standard || (controlType == .casting && !castEnabled)
+            standardPlayerOverlayView.isVisible = controlType == .standard || (controlType == .casting && !castEnabled)
             pictureInPictureOverlayView.isVisible = controlType == .pictureInPicture
-            castOverlayView.isVisible = controlType == .casting
+            castOverlayView.isVisible = controlType == .casting && castEnabled
             playerRetryView.isVisible = false
         case .error:
             playerLayer.isVisible = false
@@ -1097,6 +1116,18 @@ private extension Player {
 
 // MARK: - Google Cast
 extension Player {
+    
+    // MARK: Stop Casting
+    func stopCastingIfNeeded() {
+        guard let currentSession = sessionManager.currentCastSession,
+              playerVideoMatchesSession(currentSession)
+        else {
+            return
+        }
+        
+        stoppedCastingFromThisVideo = true
+        sessionManager.endSessionAndStopCasting(true)
+    }
     
     // MARK: Mode switching
     func switchToLocalPlayback(shouldAutoPlay: Bool, continueFromTime: TimeInterval = 0) {

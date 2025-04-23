@@ -75,7 +75,8 @@ The main commands to use the player:
 impulsePlayer.load(
     title: video.title,
     subtitle: video.subtitle,
-    url: video.url
+    url: video.url,
+    headers: nil
 )
 impulsePlayer.play()
 impulsePlayer.pause()
@@ -158,6 +159,8 @@ ImpulsePlayer.setSettings(
 > **Note**: To enable Picture-in-Picture mode, add the **'Background Modes'** capability in your target's project settings and enable **'Audio, AirPlay, and Picture in Picture'**.
 
 > **Note**: Setting up Chromecast with a custom receiver application ID requires additional configuration. See the section below.
+
+> **Note**: Note: Airplay and Cast are unsupported when a player loads a video using additional authorization headers. To disable Cast for that specific player while preserving Cast functionality for others, use `impulsePlayer.setCastEnabled(false)`
 
 #### Chromecast Setup
 

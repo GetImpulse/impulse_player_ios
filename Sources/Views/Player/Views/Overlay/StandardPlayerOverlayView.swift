@@ -61,6 +61,11 @@ class StandardPlayerOverlayView: PlayerOverlayView {
     }
     
     // MARK: Internal Variables
+    var castEnabled: Bool = true {
+        didSet {
+            remoteDeviceButton.isHidden = !castEnabled
+        }
+    }
     weak var delegate: StandardPlayerOverlayViewDelegate?
     
     // MARK: Private Properties
