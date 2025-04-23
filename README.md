@@ -72,11 +72,15 @@ func setupImpulsePlayerView() {
 The main commands to use the player:
 
 ```swift
+let headers = [
+    "key": "value",
+]
+impulsePlayer.load(url: video.url)
 impulsePlayer.load(
     title: video.title,
     subtitle: video.subtitle,
     url: video.url,
-    headers: nil
+    headers: headers
 )
 impulsePlayer.play()
 impulsePlayer.pause()
@@ -160,7 +164,7 @@ ImpulsePlayer.setSettings(
 
 > **Note**: Setting up Chromecast with a custom receiver application ID requires additional configuration. See the section below.
 
-> **Note**: Note: Airplay and Cast are unsupported when a player loads a video using additional authorization headers. To disable Cast for that specific player while preserving Cast functionality for others, use `impulsePlayer.setCastEnabled(false)`
+> **Note**: Note: Airplay and Cast are unsupported when a player loads a video using additional authorization headers. To disable Cast for that specific player while preserving Cast functionality for others, use `impulsePlayer.setCastEnabled(false)`.
 
 #### Chromecast Setup
 
