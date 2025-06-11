@@ -77,9 +77,9 @@ let headers = [
 ]
 impulsePlayer.load(url: video.url)
 impulsePlayer.load(
+    url: video.url,
     title: video.title,
     subtitle: video.subtitle,
-    url: video.url,
     headers: headers
 )
 impulsePlayer.play()

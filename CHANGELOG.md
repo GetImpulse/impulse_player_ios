@@ -1,4 +1,11 @@
+### 0.3.1
+
+- [Player] Pause the video when view is removed from the window.
+- [General] Adjusted order of parameters for 'load()' on ImpulsePlayerView.
+
 ### 0.3.0
+
+### 0.2.1
 
 - [Video Player] Added support for headers on video load.
 - [Cast & Airplay] Added option to disable casting per player.

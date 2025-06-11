@@ -42,23 +42,23 @@ private extension VideoViewController {
         let videoOne = Settings.videos[0]
         impulsePlayer.setCastEnabled(false)
         impulsePlayer.load(
+            url: videoOne.url,
             title: videoOne.title,
-            subtitle: "Video 1 subtitle",
-            url: videoOne.url
+            subtitle: "Video 1 subtitle"
         )
         
         let videoTwo = Settings.videos[1]
         impulsePlayerTwo.load(
+            url: videoTwo.url,
             title: videoTwo.title,
-            subtitle: "Video 2 subtitle",
-            url: videoTwo.url
+            subtitle: "Video 2 subtitle"
         )
         
         let videoThree = Settings.videos[2]
         impulsePlayerThree.load(
+            url: videoThree.url,
             title: videoThree.title,
-            subtitle: "Video 3 subtitle",
-            url: videoThree.url
+            subtitle: "Video 3 subtitle"
         )
         
         impulsePlayerFour.load(url: URL(string: "http://localhost")!)
@@ -99,9 +99,9 @@ private extension VideoViewController {
     
     func commands() {
         impulsePlayer.load(
+            url: URL(string: "url")!,
             title: "Title",
-            subtitle: "Subtitle",
-            url: URL(string: "url")!
+            subtitle: "Subtitle"
         )
         impulsePlayer.play()
         impulsePlayer.pause()

@@ -49,7 +49,7 @@ public final class ImpulsePlayerView: UIView {
         super.didMoveToWindow()
         
         if window == nil {
-            coordinator?.reset()
+            pause()
         }
     }
 }
@@ -63,7 +63,7 @@ private extension ImpulsePlayerView {
 
 public extension ImpulsePlayerView {
     
-    public func load(title: String? = nil, subtitle: String? = nil, url: URL, headers: [String: String]? = nil) {
+    public func load(url: URL, title: String? = nil, subtitle: String? = nil, headers: [String: String]? = nil) {
         guard let parent else { return }
         
         let video: Player.Video = .init(

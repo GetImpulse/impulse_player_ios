@@ -1085,6 +1085,9 @@ private extension Player {
     func loadPictureInPictureControllerIfNeeded() {
         if pictureInPictureControllerIfLoaded == nil {
             pictureInPictureControllerIfLoaded = AVPictureInPictureController(playerLayer: playerLayer)
+            if #available(iOS 14.2, *) {
+                pictureInPictureControllerIfLoaded?.canStartPictureInPictureAutomaticallyFromInline = true
+            }
         }
     }
     
