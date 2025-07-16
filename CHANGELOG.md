@@ -1,3 +1,7 @@
+### 0.3.2
+
+- [Cocoapods] Updated version in Podfile.
+
 ### 0.3.1
 
 - [Player] Pause the video when view is removed from the window.
