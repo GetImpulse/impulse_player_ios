@@ -113,6 +113,7 @@ public extension ImpulsePlayerView {
             .store(in: &subscribers)
         
         coord.publisher(for: \.duration)
+            .filter { !$0.isNaN && !$0.isInfinite }
             .sink { [weak self] duration in
                 self?.duration = duration
             }

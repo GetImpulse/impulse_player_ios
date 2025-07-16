@@ -5,8 +5,6 @@
 
 ### 0.3.0
 
-### 0.2.1
-
 - [Video Player] Added support for headers on video load.
 - [Cast & Airplay] Added option to disable casting per player.
 

@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'impulse_player_ios'
-  s.version          = '0.2.0'
+  s.version          = '0.3.2'
   s.summary          = 'Impulse Player iOS plugin'
   s.description      = <<-DESC
 Impulse Player iOS.
